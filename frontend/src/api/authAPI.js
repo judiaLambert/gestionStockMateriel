@@ -15,7 +15,6 @@ export const authApi = {
     return response.json();
   },
 
-  // Premier changement de mot de passe
   firstLoginChangePassword: async (email, newPassword) => {
     const response = await fetch(`${API_URL}/auth/first-login-change-password`, {
       method: 'POST',
