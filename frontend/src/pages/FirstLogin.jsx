@@ -13,7 +13,7 @@ const FirstLogin = () => {
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (!userData || !JSON.parse(userData).premier_login) {
-      navigate('/login');
+      navigate('/login-demandeur');
     } else {
       setUser(JSON.parse(userData));
     }
@@ -41,12 +41,18 @@ const FirstLogin = () => {
       if (result.success) {
         const updatedUser = { ...user, premier_login: false };
         localStorage.setItem('user', JSON.stringify(updatedUser));
-        navigate('/dashboard');
+        
+        // REDIRECTION VERS LE DASHBOARD APPROPRIÉ
+        if (user.role === 'demandeur') {
+          navigate('/dashboard-demandeur');
+        } else {
+          navigate('/dashboard');
+        }
       } else {
         setError('Erreur lors du changement de mot de passe');
       }
     } catch (err) {
-      setError('Erreur de connexion');
+      setError('Erreur de connexion au serveur');
     } finally {
       setLoading(false);
     }
@@ -69,6 +75,7 @@ const FirstLogin = () => {
               onChange={(e) => setNewPassword(e.target.value)}
               required
               minLength="6"
+              placeholder="Entrez votre nouveau mot de passe"
             />
           </div>
           
@@ -79,6 +86,7 @@ const FirstLogin = () => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
+              placeholder="Confirmez votre nouveau mot de passe"
             />
           </div>
 

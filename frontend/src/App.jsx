@@ -27,7 +27,7 @@ import HomePage from './pages/HomePage';
 import LoginDemandeur from './pages/LoginDemandeur';
 import CreerCompteDemandeur from './pages/CreerCompteDemandeur';
 import DemandesInscription from './pages/DemandesInscription';
-
+import DashboardDemandeur from './pages/userInterface/DashboardDemandeur';
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
@@ -53,15 +53,21 @@ function App() {
   }, []);
 
   // Composant protégé
-  const ProtectedRoute = ({ children }) => {
+  const ProtectedRoute = ({ children, requireAdmin = false }) => {
     if (loading) {
       return <div className="flex justify-center items-center h-screen">Chargement...</div>;
     }
     
     if (!user) {
-      return <Navigate to="/login" />;
+      return <Navigate to="/" />;
     }
 
+    // Vérifier si admin requis
+    if (requireAdmin && user.role !== 'admin') {
+      return <Navigate to="/dashboard" />;
+    }
+
+    // Redirection pour premier login
     if (user.premier_login && window.location.pathname !== '/first-login') {
       return <Navigate to="/first-login" />;
     }
@@ -70,31 +76,30 @@ function App() {
   };
 
   // Composant de layout principal
-  // Composant de layout principal
-const MainLayout = ({ children }) => {
-  return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar 
-        isOpen={sidebarOpen} 
-        setIsOpen={setSidebarOpen} 
-        user={user}
-        setUser={setUser} // ← AJOUTER CETTE PROP
-      />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header 
-          sidebarOpen={sidebarOpen} 
-          setSidebarOpen={setSidebarOpen} 
-          stockAlerts={stockAlerts} 
+  const MainLayout = ({ children }) => {
+    return (
+      <div className="flex h-screen bg-gray-100">
+        <Sidebar 
+          isOpen={sidebarOpen} 
+          setIsOpen={setSidebarOpen} 
           user={user}
           setUser={setUser}
         />
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header 
+            sidebarOpen={sidebarOpen} 
+            setSidebarOpen={setSidebarOpen} 
+            stockAlerts={stockAlerts} 
+            user={user}
+            setUser={setUser}
+          />
+          <main className="flex-1 overflow-y-auto p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   if (loading) {
     return <div className="flex justify-center items-center h-screen">Chargement...</div>;
@@ -102,40 +107,43 @@ const MainLayout = ({ children }) => {
 
   return (
     <Router>
-   
       <Routes>
-       
         {/* Page d'accueil */}
         <Route path="/" element={<HomePage />} />
   
-  {/* Login Admin (ton Login.jsx existant) */}
-        <Route path="/login-admin" element={<LoginAdmin />} />
-  
-  {/* Login Demandeur (connexion pour demandeurs existants) */}
-        <Route path="/login-demandeur" element={<LoginDemandeur />} />
-  
-  {/* Création de compte demandeur (nouvelle page) */}
+        {/* Routes de connexion publique */}
+        <Route path="/login-admin" element={<LoginAdmin setUser={setUser} />} />
+        <Route path="/login-demandeur" element={<LoginDemandeur setUser={setUser} />} />
         <Route path="/creer-compte-demandeur" element={<CreerCompteDemandeur />} />
-        <Route path="/first-login" element={
-            user && user.premier_login ? 
-            <FirstLogin setUser={setUser} /> : 
-            <Navigate to="/dashboard" />
-          } 
-        />
-        <Route 
-  path="/demandes-inscription" 
+        <Route path="/first-login" element={<FirstLogin setUser={setUser} />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+
+
+    
+<Route 
+  path="/dashboard-demandeur" 
   element={
     <ProtectedRoute>
       <MainLayout>
-        <DemandesInscription />
+        <DashboardDemandeur />
       </MainLayout>
     </ProtectedRoute>
   } 
 />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+        {/* Routes protégées - Admin seulement */}
+        <Route 
+          path="/demandes-inscription" 
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <MainLayout>
+                <DemandesInscription />
+              </MainLayout>
+            </ProtectedRoute>
+          } 
+        />
 
-        {/* Routes protégées */}
+        {/* Routes protégées - Tous utilisateurs connectés */}
         <Route 
           path="/dashboard" 
           element={
@@ -227,7 +235,7 @@ const MainLayout = ({ children }) => {
         <Route 
           path="/demandeur" 
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requireAdmin={true}>
               <MainLayout>
                 <DemandeurList />
               </MainLayout>
@@ -323,11 +331,15 @@ const MainLayout = ({ children }) => {
           } 
         />
         
-        {/* Route racine */}
+        {/* Redirection selon le rôle après connexion */}
         <Route 
           path="/" 
           element={
-            user ? <Navigate to="/dashboard" /> : <Navigate to="/" />
+            user ? (
+              user.role === 'admin' ? <Navigate to="/dashboard" /> : <Navigate to="/dashboard" />
+            ) : (
+              <Navigate to="/" />
+            )
           } 
         />
 
