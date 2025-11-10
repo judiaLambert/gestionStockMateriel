@@ -1,40 +1,54 @@
 import React, { useState, useEffect } from 'react';
-import { Package, FileText, Clock, CheckCircle, XCircle, Plus, Wrench, X } from 'lucide-react';
+import { 
+  Plus, Clock, CheckCircle, XCircle, X, LogOut, User, 
+  Calendar, Package, FileText, Wrench, ChevronRight, BarChart3
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { getDemandesByDemandeur, addDemande } from '../../api/demandematerielAPI';
 import { getMateriels } from '../../api/materielAPI';
+import { getDemandeurByUserId } from '../../api/demandeurAPI';
 
 const DashboardDemandeur = () => {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [demandes, setDemandes] = useState([]);
   const [materiels, setMateriels] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showDemandeModal, setShowDemandeModal] = useState(false);
-  const [showDepannageModal, setShowDepannageModal] = useState(false);
+  const [currentView, setCurrentView] = useState('home'); // home, demandes, stats
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState('demande'); // demande ou signalement
+  
+  const [stats, setStats] = useState({
+    total: 0,
+    enAttente: 0,
+    approuvees: 0,
+    refusees: 0
+  });
+  
   const [formData, setFormData] = useState({
     raison_demande: '',
     details: [{ id_materiel: '', quantite_demander: 1 }]
   });
-
+  
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (userData) {
       const userObj = JSON.parse(userData);
       setUser(userObj);
-      fetchDemandes(userObj.id);
+      fetchDemandes(userObj.id_utilisateur || userObj.id);
       fetchMateriels();
     }
   }, []);
 
   const fetchDemandes = async (userId) => {
     try {
-      const response = await getDemandesByDemandeur(userId);
-      console.log('Réponse API:', response.data);
-      
+      const demandeurResponse = await getDemandeurByUserId(userId);
+      const response = await getDemandesByDemandeur(demandeurResponse.data.id_demandeur);
       const demandesData = response.data.data || response.data || [];
       setDemandes(demandesData);
       calculateStats(demandesData);
     } catch (error) {
-      console.error('Erreur chargement demandes:', error);
+      console.error('Erreur:', error);
     } finally {
       setLoading(false);
     }
@@ -45,416 +59,387 @@ const DashboardDemandeur = () => {
       const response = await getMateriels();
       setMateriels(response.data.data || response.data || []);
     } catch (error) {
-      console.error('Erreur chargement matériels:', error);
+      console.error('Erreur:', error);
     }
   };
 
-  const calculateStats = (demandesData) => {
-    const stats = {
-      total: demandesData.length,
-      enAttente: demandesData.filter(d => d.statut === 'en_attente').length,
-      approuvees: demandesData.filter(d => d.statut === 'approuvee').length,
-      refusees: demandesData.filter(d => d.statut === 'refusee').length
-    };
-    setStats(stats);
+  const calculateStats = (data) => {
+    setStats({
+      total: data.length,
+      enAttente: data.filter(d => d.statut === 'en_attente').length,
+      approuvees: data.filter(d => d.statut === 'approuvee').length,
+      refusees: data.filter(d => d.statut === 'refusee').length
+    });
   };
 
-  const getStatusIcon = (statut) => {
-    switch (statut) {
-      case 'approuvee':
-        return <CheckCircle className="text-green-500" size={20} />;
-      case 'refusee':
-        return <XCircle className="text-red-500" size={20} />;
-      default:
-        return <Clock className="text-orange-500" size={20} />;
-    }
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    navigate('/login-demandeur');
   };
 
-  const getStatusColor = (statut) => {
-    switch (statut) {
-      case 'approuvee':
-        return 'bg-green-100 text-green-800';
-      case 'refusee':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-orange-100 text-orange-800';
-    }
-  };
-
-  const getStatusText = (statut) => {
-    switch (statut) {
-      case 'approuvee':
-        return 'Approuvée';
-      case 'refusee':
-        return 'Refusée';
-      default:
-        return 'En attente';
-    }
-  };
-
-  const handleAddMaterial = () => {
-    setFormData(prev => ({
-      ...prev,
-      details: [...prev.details, { id_materiel: '', quantite_demander: 1 }]
-    }));
-  };
-
-  const handleRemoveMaterial = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      details: prev.details.filter((_, i) => i !== index)
-    }));
-  };
-
-  const handleMaterialChange = (index, field, value) => {
-    const updatedDetails = [...formData.details];
-    updatedDetails[index][field] = value;
-    setFormData(prev => ({ ...prev, details: updatedDetails }));
-  };
-
-  const handleSubmitDemande = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!user) {
-      alert('Utilisateur non connecté');
-      return;
-    }
-
     try {
-      const demandeData = {
-        id_demandeur: user.id,
-        raison_demande: formData.raison_demande,
-        details: formData.details.filter(detail => detail.id_materiel && detail.quantite_demander > 0)
-      };
-
-      await addDemande(demandeData);
+      const userId = user.id_utilisateur || user.id;
+      const demandeurResponse = await getDemandeurByUserId(userId);
       
-      setFormData({
-        raison_demande: '',
-        details: [{ id_materiel: '', quantite_demander: 1 }]
+      await addDemande({
+        id_demandeur: demandeurResponse.data.id_demandeur,
+        raison_demande: formData.raison_demande,
+        details: formData.details.filter(d => d.id_materiel && d.quantite_demander > 0)
       });
       
-      setShowDemandeModal(false);
-      fetchDemandes(user.id);
-      
-      alert('Demande créée avec succès!');
+      setFormData({ raison_demande: '', details: [{ id_materiel: '', quantite_demander: 1 }] });
+      setShowModal(false);
+      fetchDemandes(userId);
+      alert('✅ Demande créée avec succès');
     } catch (error) {
-      console.error('Erreur création demande:', error);
-      alert('Erreur lors de la création de la demande');
+      alert('❌ Erreur lors de la création');
     }
+  };
+
+  const getStatusConfig = (statut) => {
+    const configs = {
+      approuvee: { icon: CheckCircle, text: 'Approuvée', color: 'text-green-600' },
+      refusee: { icon: XCircle, text: 'Refusée', color: 'text-gray-600' },
+      en_attente: { icon: Clock, text: 'En attente', color: 'text-blue-600' }
+    };
+    return configs[statut] || configs.en_attente;
   };
 
   if (loading) {
-    return <div className="flex justify-center items-center h-64">Chargement...</div>;
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-3 border-gray-200 border-t-green-600 rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-sm text-gray-600">Chargement...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      {/* En-tête */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Tableau de Bord Demandeur</h1>
-          <p className="text-gray-600">Bienvenue, {user?.nom}</p>
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowDepannageModal(true)}
-            className="bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-orange-700 transition-colors"
-          >
-            <Wrench size={20} />
-            Signalement Dépannage
-          </button>
-          <button
-            onClick={() => setShowDemandeModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={20} />
-            Nouvelle Demande
-          </button>
-        </div>
-      </div>
-
-      {/* Statistiques */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-lg shadow-md p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50">
+      
+      {/* HEADER UNIQUE */}
+      <header className="bg-white border-b shadow-sm">
+        <div className="max-w-5xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm">Total Demandes</p>
-              <p className="text-3xl font-bold mt-2">{stats.total}</p>
-            </div>
-            <div className="bg-blue-500 text-white p-3 rounded-lg">
-              <FileText size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm">En Attente</p>
-              <p className="text-3xl font-bold mt-2">{stats.enAttente}</p>
-            </div>
-            <div className="bg-orange-500 text-white p-3 rounded-lg">
-              <Clock size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm">Approuvées</p>
-              <p className="text-3xl font-bold mt-2">{stats.approuvees}</p>
-            </div>
-            <div className="bg-green-500 text-white p-3 rounded-lg">
-              <CheckCircle size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-500 text-sm">Refusées</p>
-              <p className="text-3xl font-bold mt-2">{stats.refusees}</p>
-            </div>
-            <div className="bg-red-500 text-white p-3 rounded-lg">
-              <XCircle size={24} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Demandes récentes */}
-      <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold">Mes Demandes Récentes</h3>
-        </div>
-
-        {demandes.length === 0 ? (
-          <div className="text-center py-12">
-            <Package className="mx-auto text-gray-400" size={48} />
-            <p className="text-gray-500 mt-4">Aucune demande pour le moment</p>
-            <button
-              onClick={() => setShowDemandeModal(true)}
-              className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Faire une première demande
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {demandes.slice(0, 5).map((demande) => (
-              <div key={demande.id_demande} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      {getStatusIcon(demande.statut)}
-                      <h4 className="font-semibold text-lg">{demande.raison_demande}</h4>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(demande.statut)}`}>
-                        {getStatusText(demande.statut)}
-                      </span>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                      <div>
-                        <span className="font-medium">Date:</span>{' '}
-                        {new Date(demande.date_demande).toLocaleDateString()}
-                      </div>
-                      <div>
-                        <span className="font-medium">ID:</span> {demande.id_demande}
-                      </div>
-                    </div>
-
-                    {demande.detailDemandes && demande.detailDemandes.length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-sm font-medium text-gray-700 mb-2">Matériels demandés:</p>
-                        <div className="space-y-1">
-                          {demande.detailDemandes.slice(0, 3).map((detail) => (
-                            <div key={detail.id_detail} className="flex justify-between text-sm">
-                              <span>{detail.materiel?.nom_materiel}</span>
-                              <span className="text-gray-500">Qty: {detail.quantite_demander}</span>
-                            </div>
-                          ))}
-                          {demande.detailDemandes.length > 3 && (
-                            <p className="text-xs text-gray-500">
-                              +{demande.detailDemandes.length - 3} autre(s) matériel(s)
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 bg-green-600 rounded-xl flex items-center justify-center shadow-sm">
+                <span className="text-white font-bold text-lg">ENI</span>
               </div>
-            ))}
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">Comptabilité Matière</h1>
+                <p className="text-xs text-gray-500">École Nationale d'Informatique</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="px-3 py-2 bg-gray-50 rounded-lg">
+                <p className="text-sm font-semibold text-gray-900">{user?.nom}</p>
+                <p className="text-xs text-gray-500">Demandeur</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg"
+                title="Déconnexion"
+              >
+                <LogOut size={20} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* CONTENU PRINCIPAL */}
+      <main className="max-w-5xl mx-auto px-6 py-8">
+
+        {/* VUE ACCUEIL */}
+        {currentView === 'home' && (
+          <div className="space-y-6">
+            
+            {/* Message de bienvenue */}
+            <div className="bg-white rounded-2xl p-8 text-center border border-gray-200 shadow-sm">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <User size={32} className="text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Bonjour {user?.nom} ! 👋
+              </h2>
+              <p className="text-gray-600">
+                Que souhaitez-vous faire aujourd'hui ?
+              </p>
+            </div>
+
+            {/* Actions principales */}
+            <div className="grid md:grid-cols-2 gap-4">
+              
+              {/* Faire une demande */}
+              <button
+                onClick={() => {
+                  setModalType('demande');
+                  setShowModal(true);
+                }}
+                className="bg-white rounded-xl p-6 border-2 border-gray-200 hover:border-green-500 hover:shadow-lg transition-all text-left group"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-600 transition-colors">
+                    <Package size={24} className="text-green-600 group-hover:text-white transition-colors" />
+                  </div>
+                  <ChevronRight size={24} className="text-gray-400 group-hover:text-green-600 transition-colors" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Demande de Matériel</h3>
+                <p className="text-sm text-gray-600">Faire une nouvelle demande de matériel informatique</p>
+              </button>
+
+              {/* Signaler une panne */}
+              <button
+                onClick={() => {
+                  setModalType('signalement');
+                  setShowModal(true);
+                }}
+                className="bg-white rounded-xl p-6 border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-600 transition-colors">
+                    <Wrench size={24} className="text-blue-600 group-hover:text-white transition-colors" />
+                  </div>
+                  <ChevronRight size={24} className="text-gray-400 group-hover:text-blue-600 transition-colors" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">Signaler une Panne</h3>
+                <p className="text-sm text-gray-600">Signaler un problème ou une panne de matériel</p>
+              </button>
+            </div>
+
+            {/* Accès rapide */}
+            <div className="grid md:grid-cols-2 gap-4">
+              
+              <button
+                onClick={() => setCurrentView('demandes')}
+                className="bg-white rounded-xl p-5 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileText size={20} className="text-gray-600" />
+                      <h4 className="font-semibold text-gray-900">Mes Demandes</h4>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+                  </div>
+                  <ChevronRight size={20} className="text-gray-400" />
+                </div>
+              </button>
+
+              <button
+                onClick={() => setCurrentView('stats')}
+                className="bg-white rounded-xl p-5 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all text-left"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <BarChart3 size={20} className="text-gray-600" />
+                      <h4 className="font-semibold text-gray-900">Statistiques</h4>
+                    </div>
+                    <p className="text-2xl font-bold text-green-600">{stats.enAttente}</p>
+                    <p className="text-xs text-gray-500">en attente</p>
+                  </div>
+                  <ChevronRight size={20} className="text-gray-400" />
+                </div>
+              </button>
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Modal Nouvelle Demande */}
-      {showDemandeModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">Nouvelle Demande de Matériel</h3>
+        {/* VUE DEMANDES */}
+        {currentView === 'demandes' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
               <button
-                onClick={() => setShowDemandeModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setCurrentView('home')}
+                className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
               >
-                <X size={24} />
+                ← Retour
               </button>
+              <h2 className="text-xl font-bold text-gray-900">Mes Demandes</h2>
+              <div className="w-20"></div>
             </div>
-            
-            <form onSubmit={handleSubmitDemande}>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Raison de la demande *
-                  </label>
-                  <textarea
-                    value={formData.raison_demande}
-                    onChange={(e) => setFormData(prev => ({ ...prev, raison_demande: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    rows="3"
-                    placeholder="Décrivez pourquoi vous avez besoin de ce matériel..."
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Matériels demandés
-                  </label>
-                  <div className="space-y-3">
-                    {formData.details.map((detail, index) => (
-                      <div key={index} className="flex gap-2 items-start">
-                        <select 
-                          value={detail.id_materiel}
-                          onChange={(e) => handleMaterialChange(index, 'id_materiel', e.target.value)}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          required
-                        >
-                          <option value="">Sélectionnez un matériel</option>
-                          {materiels.map(materiel => (
-                            <option key={materiel.id} value={materiel.id}>
-                              {materiel.designation}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          value={detail.quantite_demander}
-                          onChange={(e) => handleMaterialChange(index, 'quantite_demander', parseInt(e.target.value))}
-                          placeholder="Qty"
-                          className="w-20 px-3 py-2 border border-gray-300 rounded-lg"
-                          min="1"
-                          required
-                        />
-                        {formData.details.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMaterial(index)}
-                            className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-                          >
-                            <X size={16} />
-                          </button>
-                        )}
+
+            {demandes.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+                <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-600">Aucune demande pour le moment</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {demandes.map((demande) => {
+                  const status = getStatusConfig(demande.statut);
+                  const StatusIcon = status.icon;
+                  
+                  return (
+                    <div key={demande.id_demande} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-gray-900 mb-1 truncate">{demande.raison_demande}</h3>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <Calendar size={12} />
+                            <span>{new Date(demande.date_demande).toLocaleDateString('fr-FR')}</span>
+                          </div>
+                        </div>
+                        <span className={`flex items-center gap-1 text-xs font-medium ${status.color}`}>
+                          <StatusIcon size={14} />
+                          {status.text}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={handleAddMaterial}
-                    className="mt-2 text-blue-600 text-sm flex items-center gap-1 hover:text-blue-800"
-                  >
-                    <Plus size={16} />
-                    Ajouter un autre matériel
-                  </button>
-                </div>
-                
-                <div className="flex gap-3 justify-end pt-4 border-t">
-                  <button
-                    type="button"
-                    onClick={() => setShowDemandeModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    Soumettre la demande
-                  </button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* Modal Dépannage */}
-      {showDepannageModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold">Signalement de Dépannage</h3>
+                      {demande.detailDemandes?.length > 0 && (
+                        <div className="bg-gray-50 rounded p-2 mt-2">
+                          <p className="text-xs text-gray-600 mb-1">Matériels:</p>
+                          {demande.detailDemandes.map((detail) => (
+                            <div key={detail.id_detail} className="flex justify-between text-xs">
+                              <span className="text-gray-700">{detail.materiel?.designation}</span>
+                              <span className="text-gray-500">x{detail.quantite_demander}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* VUE STATS */}
+        {currentView === 'stats' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
               <button
-                onClick={() => setShowDepannageModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setCurrentView('home')}
+                className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
               >
-                <X size={24} />
+                ← Retour
               </button>
+              <h2 className="text-xl font-bold text-gray-900">Statistiques</h2>
+              <div className="w-20"></div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl p-5 border border-gray-200">
+                <p className="text-sm text-gray-600 mb-1">Total</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+              </div>
+              <div className="bg-white rounded-xl p-5 border border-gray-200">
+                <p className="text-sm text-gray-600 mb-1">En attente</p>
+                <p className="text-3xl font-bold text-blue-600">{stats.enAttente}</p>
+              </div>
+              <div className="bg-white rounded-xl p-5 border border-gray-200">
+                <p className="text-sm text-gray-600 mb-1">Approuvées</p>
+                <p className="text-3xl font-bold text-green-600">{stats.approuvees}</p>
+              </div>
+              <div className="bg-white rounded-xl p-5 border border-gray-200">
+                <p className="text-sm text-gray-600 mb-1">Refusées</p>
+                <p className="text-3xl font-bold text-gray-600">{stats.refusees}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* MODAL */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-2xl">
+            
+            <div className="p-5 border-b">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">
+                  {modalType === 'demande' ? 'Nouvelle Demande' : 'Signaler une Panne'}
+                </h3>
+                <button onClick={() => setShowModal(false)} className="p-1 hover:bg-gray-100 rounded">
+                  <X size={18} className="text-gray-500" />
+                </button>
+              </div>
             </div>
             
-            <div className="space-y-4">
+            <form onSubmit={handleSubmit} className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Matériel à réparer *
-                </label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                  <option value="">Sélectionnez le matériel</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description du problème *
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  {modalType === 'demande' ? 'Raison' : 'Description du problème'}
                 </label>
                 <textarea
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  value={formData.raison_demande}
+                  onChange={(e) => setFormData(prev => ({ ...prev, raison_demande: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none resize-none"
                   rows="3"
-                  placeholder="Décrivez le problème rencontré..."
+                  required
                 />
               </div>
               
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Urgence
-                </label>
-                <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                  <option value="faible">Faible</option>
-                  <option value="moyenne">Moyenne</option>
-                  <option value="elevee">Élevée</option>
-                  <option value="critique">Critique</option>
-                </select>
-              </div>
+              {modalType === 'demande' && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Matériels</label>
+                  {formData.details.map((detail, index) => (
+                    <div key={index} className="flex gap-2 mb-2">
+                      <select 
+                        value={detail.id_materiel}
+                        onChange={(e) => {
+                          const updated = [...formData.details];
+                          updated[index].id_materiel = e.target.value;
+                          setFormData(prev => ({ ...prev, details: updated }));
+                        }}
+                        className="flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                        required
+                      >
+                        <option value="">Sélectionner...</option>
+                        {materiels.map(m => (
+                          <option key={m.id} value={m.id}>{m.designation}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        value={detail.quantite_demander}
+                        onChange={(e) => {
+                          const updated = [...formData.details];
+                          updated[index].quantite_demander = parseInt(e.target.value) || 1;
+                          setFormData(prev => ({ ...prev, details: updated }));
+                        }}
+                        className="w-16 px-2 py-2 border rounded-lg text-sm text-center outline-none"
+                        min="1"
+                        required
+                      />
+                    </div>
+                  ))}
+                  <button 
+                    type="button"
+                    onClick={() => setFormData(prev => ({
+                      ...prev,
+                      details: [...prev.details, { id_materiel: '', quantite_demander: 1 }]
+                    }))}
+                    className="text-green-600 text-xs font-semibold"
+                  >
+                    + Ajouter
+                  </button>
+                </div>
+              )}
               
-              <div className="flex gap-3 justify-end pt-4">
+              <div className="flex gap-2 pt-2">
                 <button
-                  onClick={() => setShowDepannageModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="flex-1 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50"
                 >
                   Annuler
                 </button>
                 <button
-                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
                 >
-                  Envoyer le signalement
+                  Envoyer
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}

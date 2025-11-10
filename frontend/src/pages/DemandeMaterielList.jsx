@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, Edit, Trash2, Calendar, User, FileText } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Info, Eye } from 'lucide-react';
 import Modal from '../components/Modal';
 import { 
   getDemandes, 
@@ -13,6 +13,8 @@ const DemandeMaterielList = () => {
   const [demandes, setDemandes] = useState([]);
   const [demandeurs, setDemandeurs] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedDemande, setSelectedDemande] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({ 
     id_demandeur: '', 
@@ -83,6 +85,11 @@ const DemandeMaterielList = () => {
     }
   };
 
+  const handleViewDetails = (demande) => {
+    setSelectedDemande(demande);
+    setIsDetailModalOpen(true);
+  };
+
   const filteredDemandes = demandes.filter(demande =>
     demande.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     demande.demandeur?.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -99,31 +106,25 @@ const DemandeMaterielList = () => {
     });
   };
 
-  const getStatusColor = (dateDemande) => {
-    const today = new Date();
-    const demandeDate = new Date(dateDemande);
-    const diffTime = today - demandeDate;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays <= 1) return 'bg-green-50 text-green-700 border-green-200';
-    if (diffDays <= 3) return 'bg-blue-50 text-blue-700 border-blue-200';
-    if (diffDays <= 7) return 'bg-amber-50 text-amber-700 border-amber-200';
-    return 'bg-gray-50 text-gray-700 border-gray-200';
+  const getStatusColor = (statut) => {
+    const colors = {
+      'en_attente': 'bg-orange-50 text-orange-700 border-orange-200',
+      'approuvee': 'bg-green-50 text-green-700 border-green-200',
+      'refusee': 'bg-red-50 text-red-700 border-red-200'
+    };
+    return colors[statut] || 'bg-gray-50 text-gray-700 border-gray-200';
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-                Demandes de Matériel
-              </h1>
-            </div>
-            
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+              Demandes de Matériel
+            </h1>
           </div>
           <button 
             onClick={() => setIsModalOpen(true)}
@@ -136,104 +137,69 @@ const DemandeMaterielList = () => {
 
         {/* Carte de recherche */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex-1 w-full max-w-xl">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                <input
-                  type="text"
-                  placeholder="Rechercher par ID, demandeur, raison..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50"
-                />
-              </div>
+          <div className="flex-1 w-full max-w-xl">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Rechercher par ID, demandeur, raison..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50"
+              />
             </div>
           </div>
         </div>
 
-        {/* Tableau moderne */}
+        {/* Tableau */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full">
               <thead className="bg-gradient-to-r from-emerald-600 to-teal-600">
                 <tr>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                    ID Demande
-                  </th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                    Demandeur
-                  </th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                    Date Demande
-                  </th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                    Raison
-                  </th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                    Statut
-                  </th>
-                  <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
-                    Actions
-                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">ID</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Demandeur</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Raison</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Statut</th>
+                  <th className="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
                 {filteredDemandes.map((demande, index) => (
-                  <tr 
-                    key={demande.id} 
-                    className={`hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50 transition-all duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
-                  >
+                  <tr key={demande.id} className={`hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50 transition-all duration-150 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        
-                        <span className="text-sm font-semibold text-gray-900">{demande.id}</span>
-                      </div>
+                      <span className="text-sm font-semibold text-gray-900">{demande.id}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 bg-gray-100 rounded-lg">
-                          
-                        </div>
-                        <div>
-                          <span className="text-sm font-medium text-gray-900 block">
-                            {demande.demandeur?.nom} {demande.demandeur?.prenom}
-                          </span>
-                          <span className="text-xs text-gray-500">{demande.demandeur?.email}</span>
-                        </div>
+                      <div>
+                        <span className="text-sm font-medium text-gray-900 block">
+                          {demande.demandeur?.nom} {demande.demandeur?.prenom}
+                        </span>
+                        <span className="text-xs text-gray-500">{demande.demandeur?.email}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                       
-                        <span className="text-sm text-gray-700">{formatDate(demande.date_demande)}</span>
-                      </div>
+                      <span className="text-sm text-gray-700">{formatDate(demande.date_demande)}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm text-gray-700 line-clamp-2 max-w-xs">
-                        {demande.raison_demande}
-                      </p>
+                      <p className="text-sm text-gray-700 line-clamp-2 max-w-xs">{demande.raison_demande}</p>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold border ${getStatusColor(demande.date_demande)}`}>
-                        {new Date(demande.date_demande) > new Date() ? 'Future' : 'En cours'}
+                      <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold border ${getStatusColor(demande.statut)}`}>
+                        {demande.statut === 'en_attente' ? 'En attente' : demande.statut === 'approuvee' ? 'Approuvée' : 'Refusée'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEdit(demande)}
-                          className="text-blue-600 hover:text-blue-800 flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-150 font-medium"
-                        >
-                          <Edit size={16} />
-                          Modifier
+                        <button onClick={() => handleViewDetails(demande)} className="text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-indigo-50 transition-all duration-150 font-medium" title="Voir les détails">
+                          <Eye size={16} />
                         </button>
-                        <button
-                          onClick={() => handleDelete(demande)}
-                          className="text-red-600 hover:text-red-800 flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-red-50 transition-all duration-150 font-medium"
-                        >
+                        <button onClick={() => handleEdit(demande)} className="text-blue-600 hover:text-blue-800 flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-150 font-medium">
+                          <Edit size={16} />
+                        </button>
+                        <button onClick={() => handleDelete(demande)} className="text-red-600 hover:text-red-800 flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-red-50 transition-all duration-150 font-medium">
                           <Trash2 size={16} />
-                          Supprimer
                         </button>
                       </div>
                     </td>
@@ -249,87 +215,76 @@ const DemandeMaterielList = () => {
                 <Search size={32} className="text-emerald-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucune demande trouvée</h3>
-              <p className="text-gray-500 max-w-md mx-auto">
-                {searchTerm ? 'Aucune demande ne correspond à votre recherche' : 'Commencez par ajouter votre première demande de matériel'}
-              </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setIsEditing(false);
-          setEditingId(null);
-          setFormData({ 
-            id_demandeur: '', 
-            date_demande: new Date().toISOString().split('T')[0],
-            raison_demande: '' 
-          });
-        }}
-        title={isEditing ? "Modifier la Demande" : "Nouvelle Demande de Matériel"}
-        size="md"
-      >
+      {/* Modal Formulaire */}
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setIsEditing(false); setEditingId(null); setFormData({ id_demandeur: '', date_demande: new Date().toISOString().split('T')[0], raison_demande: '' }); }} title={isEditing ? "Modifier la Demande" : "Nouvelle Demande"} size="md">
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Demandeur</label>
-            <select
-              value={formData.id_demandeur}
-              onChange={(e) => setFormData({ ...formData, id_demandeur: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50"
-              required
-            >
+            <select value={formData.id_demandeur} onChange={(e) => setFormData({ ...formData, id_demandeur: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50" required>
               <option value="">Sélectionnez un demandeur</option>
               {demandeurs.map(demandeur => (
-                <option key={demandeur.id} value={demandeur.id}>
-                  {demandeur.nom} {demandeur.prenom} - {demandeur.email}
-                </option>
+                <option key={demandeur.id} value={demandeur.id}>{demandeur.nom} {demandeur.prenom}</option>
               ))}
             </select>
           </div>
-
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Date de demande</label>
-            <input
-              type="date"
-              value={formData.date_demande}
-              onChange={(e) => setFormData({ ...formData, date_demande: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50"
-              required
-            />
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Date</label>
+            <input type="date" value={formData.date_demande} onChange={(e) => setFormData({ ...formData, date_demande: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50" required />
           </div>
-
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Raison de la demande</label>
-            <textarea
-              value={formData.raison_demande}
-              onChange={(e) => setFormData({ ...formData, raison_demande: e.target.value })}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50"
-              rows="4"
-              placeholder="Décrivez la raison de votre demande de matériel..."
-              required
-            />
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Raison</label>
+            <textarea value={formData.raison_demande} onChange={(e) => setFormData({ ...formData, raison_demande: e.target.value })} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50" rows="4" required />
           </div>
-
-          <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
-            <button 
-              type="button" 
-              onClick={() => setIsModalOpen(false)}
-              className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium"
-            >
-              Annuler
-            </button>
-            <button 
-              type="submit" 
-              className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl font-medium"
-            >
-              {isEditing ? 'Mettre à jour' : 'Enregistrer'}
-            </button>
+          <div className="flex justify-end gap-3 pt-6 border-t">
+            <button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-all font-medium">Annuler</button>
+            <button type="submit" className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg font-medium">{isEditing ? 'Mettre à jour' : 'Enregistrer'}</button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal Détails */}
+      <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="Détails de la Demande" size="lg">
+        {selectedDemande && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-xs text-gray-500 mb-1">ID Demande</p>
+                <p className="font-semibold text-gray-900">{selectedDemande.id}</p>
+              </div>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-xs text-gray-500 mb-1">Date</p>
+                <p className="font-semibold text-gray-900">{formatDate(selectedDemande.date_demande)}</p>
+              </div>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">Demandeur</p>
+              <p className="font-semibold text-gray-900">{selectedDemande.demandeur?.nom} {selectedDemande.demandeur?.prenom}</p>
+              <p className="text-sm text-gray-600">{selectedDemande.demandeur?.email}</p>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">Raison</p>
+              <p className="text-gray-900">{selectedDemande.raison_demande}</p>
+            </div>
+            {selectedDemande.detailDemandes && selectedDemande.detailDemandes.length > 0 && (
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <p className="text-xs text-blue-700 font-semibold mb-3">Matériels demandés</p>
+                <div className="space-y-2">
+                  {selectedDemande.detailDemandes.map((detail, idx) => (
+                    <div key={idx} className="flex justify-between items-center bg-white p-3 rounded-lg">
+                      <span className="text-sm font-medium text-gray-900">{detail.materiel?.designation}</span>
+                      <span className="text-sm text-gray-600">Qté: {detail.quantite_demander}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );

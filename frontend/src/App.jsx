@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+
+// Layouts
 import Sidebar from './components/sidebar/Sidebar';
 import Header from './components/layouts/Header';
+
+// Pages Admin
 import DashboardHome from './pages/Dashboard';
 import MaterielList from './pages/MaterielList';
 import TypeMaterielList from './pages/TypeMaterielList';
@@ -19,55 +24,60 @@ import DetailApproList from './pages/DetailApproList';
 import InventaireList from './pages/InventaireList';
 import MouvementStockList from './pages/MouvementStockList';
 import AttributionList from './pages/AttributionList';
+import DemandesInscription from './pages/DemandesInscription';
+
+// Pages publiques
+import HomePage from './pages/HomePage';
 import LoginAdmin from './pages/Login';
+import LoginDemandeur from './pages/LoginDemandeur';
+import CreerCompteDemandeur from './pages/CreerCompteDemandeur';
 import FirstLogin from './pages/FirstLogin';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
-import HomePage from './pages/HomePage';
-import LoginDemandeur from './pages/LoginDemandeur';
-import CreerCompteDemandeur from './pages/CreerCompteDemandeur';
-import DemandesInscription from './pages/DemandesInscription';
+
+// Pages Demandeur
 import DashboardDemandeur from './pages/userInterface/DashboardDemandeur';
+
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   
   const stockAlerts = [
-    { materiel: 'Ordinateur HP', quantite: 3, message: 'Stock critique - Réapprovisionnement urgent' },
-    { materiel: 'Imprimante Canon', quantite: 2, message: 'Stock faible - Commander bientôt' },
-    { materiel: 'Souris sans fil', quantite: 5, message: 'Stock sous le seuil minimum' }
+    { materiel: 'Ordinateur HP', quantite: 3, message: 'Stock critique' },
+    { materiel: 'Imprimante Canon', quantite: 2, message: 'Stock faible' },
+    { materiel: 'Souris sans fil', quantite: 5, message: 'Stock sous le seuil' }
   ];
 
-  // Vérifier si l'utilisateur est connecté au chargement
   useEffect(() => {
-    const checkAuth = () => {
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        setUser(JSON.parse(userData));
-      }
-      setLoading(false);
-    };
-
-    checkAuth();
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      setUser(JSON.parse(userData));
+    }
+    setLoading(false);
   }, []);
 
-  // Composant protégé
+  // Route protégée
   const ProtectedRoute = ({ children, requireAdmin = false }) => {
     if (loading) {
-      return <div className="flex justify-center items-center h-screen">Chargement...</div>;
+      return (
+        <div className="flex justify-center items-center h-screen">
+          <div className="text-center">
+            <div className="w-12 h-12 border-3 border-gray-200 border-t-green-600 rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-gray-600">Chargement...</p>
+          </div>
+        </div>
+      );
     }
     
     if (!user) {
       return <Navigate to="/" />;
     }
 
-    // Vérifier si admin requis
     if (requireAdmin && user.role !== 'admin') {
-      return <Navigate to="/dashboard" />;
+      return <Navigate to="/dashboard-demandeur" />;
     }
 
-    // Redirection pour premier login
     if (user.premier_login && window.location.pathname !== '/first-login') {
       return <Navigate to="/first-login" />;
     }
@@ -75,8 +85,8 @@ function App() {
     return children;
   };
 
-  // Composant de layout principal
-  const MainLayout = ({ children }) => {
+  // Layout ADMIN (avec Sidebar + Header)
+  const AdminLayout = ({ children }) => {
     return (
       <div className="flex h-screen bg-gray-100">
         <Sidebar 
@@ -101,17 +111,39 @@ function App() {
     );
   };
 
+  // Layout DEMANDEUR (sans Sidebar, juste le contenu)
+  const DemandeurLayout = ({ children }) => {
+    return <>{children}</>;
+  };
+
   if (loading) {
-    return <div className="flex justify-center items-center h-screen">Chargement...</div>;
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="text-center">
+          <div className="w-12 h-12 border-3 border-gray-200 border-t-green-600 rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-gray-600">Chargement...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <Router>
+      {/* Toast notifications en haut à droite */}
+      <Toaster 
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            borderRadius: '10px',
+            fontWeight: '500',
+          },
+        }}
+      />
+
       <Routes>
-        {/* Page d'accueil */}
+        {/* Pages publiques */}
         <Route path="/" element={<HomePage />} />
-  
-        {/* Routes de connexion publique */}
         <Route path="/login-admin" element={<LoginAdmin setUser={setUser} />} />
         <Route path="/login-demandeur" element={<LoginDemandeur setUser={setUser} />} />
         <Route path="/creer-compte-demandeur" element={<CreerCompteDemandeur />} />
@@ -119,38 +151,26 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
-
-    
-<Route 
-  path="/dashboard-demandeur" 
-  element={
-    <ProtectedRoute>
-      <MainLayout>
-        <DashboardDemandeur />
-      </MainLayout>
-    </ProtectedRoute>
-  } 
-/>
-        {/* Routes protégées - Admin seulement */}
+        {/* Dashboard DEMANDEUR - Sans Sidebar */}
         <Route 
-          path="/demandes-inscription" 
+          path="/dashboard-demandeur" 
           element={
-            <ProtectedRoute requireAdmin={true}>
-              <MainLayout>
-                <DemandesInscription />
-              </MainLayout>
+            <ProtectedRoute>
+              <DemandeurLayout>
+                <DashboardDemandeur />
+              </DemandeurLayout>
             </ProtectedRoute>
           } 
         />
 
-        {/* Routes protégées - Tous utilisateurs connectés */}
+        {/* Routes ADMIN - Avec Sidebar */}
         <Route 
           path="/dashboard" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <DashboardHome stockAlerts={stockAlerts} />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -158,10 +178,10 @@ function App() {
         <Route 
           path="/materiel" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <MaterielList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -169,10 +189,10 @@ function App() {
         <Route 
           path="/type-materiel" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <TypeMaterielList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -180,10 +200,10 @@ function App() {
         <Route 
           path="/etat-materiel" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <EtatMaterielList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -191,10 +211,10 @@ function App() {
         <Route 
           path="/demande-materiel" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <DemandeMaterielList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -202,10 +222,10 @@ function App() {
         <Route 
           path="/detail-demande" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <DetailDemandeList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -213,10 +233,10 @@ function App() {
         <Route 
           path="/departement" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <DepartementList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -224,10 +244,10 @@ function App() {
         <Route 
           path="/type-departement" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <TypeDepartementList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -236,9 +256,9 @@ function App() {
           path="/demandeur" 
           element={
             <ProtectedRoute requireAdmin={true}>
-              <MainLayout>
+              <AdminLayout>
                 <DemandeurList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -246,10 +266,10 @@ function App() {
         <Route 
           path="/depannage" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <DepannageList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -257,10 +277,10 @@ function App() {
         <Route 
           path="/fournisseur" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <FournisseurList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -268,10 +288,10 @@ function App() {
         <Route 
           path="/acquisition" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <AcquisitionList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -279,10 +299,10 @@ function App() {
         <Route 
           path="/approvisionnement" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <ApprovisionnementList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -290,10 +310,10 @@ function App() {
         <Route 
           path="/detail-approvisionnement" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <DetailApproList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -301,10 +321,10 @@ function App() {
         <Route 
           path="/inventaire" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <InventaireList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -312,10 +332,10 @@ function App() {
         <Route 
           path="/mouvement-stock" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <MouvementStockList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
@@ -323,20 +343,33 @@ function App() {
         <Route 
           path="/attribution" 
           element={
-            <ProtectedRoute>
-              <MainLayout>
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
                 <AttributionList />
-              </MainLayout>
+              </AdminLayout>
             </ProtectedRoute>
           } 
         />
         
-        {/* Redirection selon le rôle après connexion */}
         <Route 
-          path="/" 
+          path="/demandes-inscription" 
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <AdminLayout>
+                <DemandesInscription />
+              </AdminLayout>
+            </ProtectedRoute>
+          } 
+        />
+
+        {/* Redirection selon le rôle */}
+        <Route 
+          path="/auto-redirect" 
           element={
             user ? (
-              user.role === 'admin' ? <Navigate to="/dashboard" /> : <Navigate to="/dashboard" />
+              user.role === 'admin' ? 
+                <Navigate to="/dashboard" /> : 
+                <Navigate to="/dashboard-demandeur" />
             ) : (
               <Navigate to="/" />
             )
