@@ -1,35 +1,37 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, Phone, MapPin, Calendar, Package } from 'lucide-react';
+import { Plus, Search, Phone, MapPin, Mail, FileText, Building, Edit, Trash2 } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
+import { showSuccess, showError, showConfirm } from '../alerts.jsx';
 import Modal from '../components/Modal';
 import { 
   getFournisseursGroupes, 
-  addFournisseur
+  addFournisseur,
+  updateFournisseur,
+  deleteFournisseur
 } from '../api/fournisseurAPI';
-import { getTypesMateriel } from '../api/typematerielAPI';
 
 const FournisseurList = () => {
   const [fournisseurs, setFournisseurs] = useState([]);
-  const [typesMateriel, setTypesMateriel] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({ 
+    id: '',
     nom: '', 
     contact: '', 
     adresse: '',
-    date_livraison: new Date().toISOString().split('T')[0]
+    nif: '',
+    stat: '',
+    email: ''
   });
 
   const fetchData = async () => {
     try {
-      const [fourRes, typesRes] = await Promise.all([
-        getFournisseursGroupes(),
-        getTypesMateriel()
-      ]);
+      const fourRes = await getFournisseursGroupes();
       setFournisseurs(fourRes.data);
-      setTypesMateriel(typesRes.data);
     } catch (err) {
       console.error(err);
+      showError('Impossible de charger les fournisseurs');
     }
   };
 
@@ -40,73 +42,141 @@ const FournisseurList = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Créer une entrée pour chaque type de matériel sélectionné
-      const promises = selectedTypes.map(typeId => 
-        addFournisseur({
-          ...formData,
-          id_typemateriel: typeId
-        })
-      );
+      if (isEditing) {
+        await updateFournisseur(formData.id, {
+          nom: formData.nom.trim(),
+          contact: formData.contact.trim(),
+          adresse: formData.adresse.trim(),
+          nif: formData.nif.trim() || undefined,
+          stat: formData.stat.trim() || undefined,
+          email: formData.email.trim() || undefined
+        });
+        showSuccess(`Fournisseur "${formData.nom}" modifié avec succès !`);
+      } else {
+        await addFournisseur({
+          nom: formData.nom.trim(),
+          contact: formData.contact.trim(),
+          adresse: formData.adresse.trim(),
+          nif: formData.nif.trim() || undefined,
+          stat: formData.stat.trim() || undefined,
+          email: formData.email.trim() || undefined
+        });
+        showSuccess(`Fournisseur "${formData.nom}" ajouté avec succès !`);
+      }
       
-      await Promise.all(promises);
       setIsModalOpen(false);
-      setFormData({ 
-        nom: '', 
-        contact: '', 
-        adresse: '',
-        date_livraison: new Date().toISOString().split('T')[0]
-      });
-      setSelectedTypes([]);
+      resetForm();
       fetchData();
     } catch (err) {
       console.error(err);
+      showError(
+        isEditing 
+          ? 'Erreur lors de la modification du fournisseur' 
+          : 'Erreur lors de l\'ajout du fournisseur'
+      );
     }
   };
 
-  const handleTypeToggle = (typeId) => {
-    setSelectedTypes(prev => 
-      prev.includes(typeId) 
-        ? prev.filter(id => id !== typeId)
-        : [...prev, typeId]
+  const handleEdit = (fournisseur) => {
+    setFormData({
+      id: fournisseur.id,
+      nom: fournisseur.nom,
+      contact: fournisseur.contact,
+      adresse: fournisseur.adresse,
+      nif: fournisseur.nif || '',
+      stat: fournisseur.stat || '',
+      email: fournisseur.email || ''
+    });
+    setIsEditing(true);
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = (fournisseur) => {
+    showConfirm(
+      `Voulez-vous vraiment supprimer le fournisseur "${fournisseur.nom}" ?`,
+      async () => {
+        try {
+          await deleteFournisseur(fournisseur.id);
+          showSuccess(`Fournisseur "${fournisseur.nom}" supprimé avec succès !`);
+          fetchData();
+        } catch (err) {
+          console.error(err);
+          
+          // Détection de l'erreur de contrainte de clé étrangère
+          if (err.response?.status === 500 && err.response?.data?.message?.includes('acquisition')) {
+            showError(
+              `Impossible de supprimer "${fournisseur.nom}" car il est lié à des acquisitions existantes. Supprimez d'abord les acquisitions associées.`
+            );
+          } else if (err.response?.data?.code === '23503') {
+            showError(
+              `Ce fournisseur est encore utilisé dans d'autres enregistrements. Supprimez d'abord les références avant de le supprimer.`
+            );
+          } else {
+            showError('Erreur lors de la suppression du fournisseur');
+          }
+        }
+      }
     );
+  };
+
+  const resetForm = () => {
+    setFormData({ 
+      id: '',
+      nom: '', 
+      contact: '', 
+      adresse: '',
+      nif: '',
+      stat: '',
+      email: ''
+    });
+    setIsEditing(false);
   };
 
   const filteredFournisseurs = fournisseurs.filter(f => 
     f.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
     f.adresse.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.typesMateriel.some(tm => 
-      tm.type.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    f.nif?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    f.stat?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    f.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {/* Toast Container */}
+      <Toaster />
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Fournisseurs</h1>
-            <p className="text-gray-600 mt-2">Gestion des fournisseurs et des matériels livrés</p>
+        <div className="mb-8">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Fournisseurs</h1>
+              <p className="text-gray-600 mt-2">Gestion des fournisseurs</p>
+            </div>
+            <button 
+              onClick={() => {
+                resetForm();
+                setIsModalOpen(true);
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg flex items-center gap-2 shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+            >
+              <Plus size={20} />
+              Nouveau
+            </button>
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-xl transition-all duration-200"
-          >
-            <Plus size={20} />
-            Nouveau Fournisseur
-          </button>
         </div>
 
         {/* Recherche */}
-        <div className="bg-white rounded-2xl shadow-sm p-6 mb-8">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
           <div className="relative">
-            <Search className="absolute left-4 top-3 text-gray-400" size={20} />
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Rechercher un fournisseur, adresse ou type de matériel..."
+              placeholder="Rechercher par nom, NIF, STAT, email ou adresse..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
             />
           </div>
         </div>
@@ -114,45 +184,92 @@ const FournisseurList = () => {
         {/* Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredFournisseurs.map((fournisseur) => (
-            <div key={fournisseur.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-200">
+            <div key={fournisseur.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all duration-200">
               <div className="p-6">
-                {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-xl font-semibold text-gray-900">{fournisseur.nom}</h3>
-                  <span className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                    {fournisseur.typesMateriel.length} type(s)
-                  </span>
+                {/* Header avec nom */}
+                <div className="mb-4 pb-4 border-b border-gray-100">
+                  <h3 className="text-xl font-bold text-gray-900">{fournisseur.nom}</h3>
                 </div>
 
                 {/* Contact Info */}
-                <div className="space-y-3 mb-4">
+                <div className="space-y-3">
                   <div className="flex items-center gap-3 text-gray-600">
-                    <Phone size={16} className="text-purple-500" />
-                    <span className="text-sm">{fournisseur.contact}</span>
+                    <div className="p-2 bg-green-50 rounded-lg">
+                      <Phone size={16} className="text-green-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-500 font-medium">Contact</p>
+                      <p className="text-sm text-gray-900">{fournisseur.contact}</p>
+                    </div>
                   </div>
+
+                  {fournisseur.email && (
+                    <div className="flex items-center gap-3 text-gray-600">
+                      <div className="p-2 bg-blue-50 rounded-lg">
+                        <Mail size={16} className="text-blue-600" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs text-gray-500 font-medium">Email</p>
+                        <p className="text-sm text-gray-900">{fournisseur.email}</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-start gap-3 text-gray-600">
-                    <MapPin size={16} className="text-purple-500 mt-0.5" />
-                    <span className="text-sm">{fournisseur.adresse}</span>
+                    <div className="p-2 bg-orange-50 rounded-lg mt-0.5">
+                      <MapPin size={16} className="text-orange-600" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-500 font-medium">Adresse</p>
+                      <p className="text-sm text-gray-900 line-clamp-2">{fournisseur.adresse}</p>
+                    </div>
                   </div>
+
+                  {(fournisseur.nif || fournisseur.stat) && (
+                    <div className="pt-3 border-t border-gray-100">
+                      {fournisseur.nif && (
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="p-2 bg-purple-50 rounded-lg">
+                            <FileText size={16} className="text-purple-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs text-gray-500 font-medium">NIF</p>
+                            <p className="text-sm text-gray-900">{fournisseur.nif}</p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {fournisseur.stat && (
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-indigo-50 rounded-lg">
+                            <Building size={16} className="text-indigo-600" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs text-gray-500 font-medium">STAT</p>
+                            <p className="text-sm text-gray-900">{fournisseur.stat}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                {/* Types de Matériel */}
-                <div className="border-t border-gray-100 pt-4">
-                  <h4 className="text-sm font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <Package size={16} />
-                    Types de matériel fournis
-                  </h4>
-                  <div className="space-y-2">
-                    {fournisseur.typesMateriel.map((type, index) => (
-                      <div key={index} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2">
-                        <span className="text-sm font-medium text-gray-700">{type.type}</span>
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <Calendar size={12} />
-                          {new Date(type.date).toLocaleDateString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                {/* Actions */}
+                <div className="flex items-center gap-2 mt-6 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => handleEdit(fournisseur)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all font-medium"
+                  >
+                    <Edit size={18} />
+                    Modifier
+                  </button>
+                  <button
+                    onClick={() => handleDelete(fournisseur)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-all font-medium"
+                  >
+                    <Trash2 size={18} />
+                    Supprimer
+                  </button>
                 </div>
               </div>
             </div>
@@ -160,146 +277,120 @@ const FournisseurList = () => {
         </div>
 
         {filteredFournisseurs.length === 0 && (
-          <div className="text-center py-12">
-            <Package size={64} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun fournisseur trouvé</h3>
-            <p className="text-gray-500">Commencez par ajouter votre premier fournisseur</p>
+          <div className="text-center py-16">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+              <Search size={32} className="text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucun fournisseur trouvé</h3>
+            <p className="text-gray-500">
+              {searchTerm ? 'Aucun résultat ne correspond à votre recherche' : 'Commencez par ajouter un fournisseur'}
+            </p>
           </div>
         )}
       </div>
 
       {/* Modal */}
       <Modal
-  isOpen={isModalOpen}
-  onClose={() => {
-    setIsModalOpen(false);
-    setFormData({ 
-      nom: '', 
-      contact: '', 
-      adresse: '',
-      date_livraison: new Date().toISOString().split('T')[0]
-    });
-    setSelectedTypes([]);
-  }}
-  title="Nouveau Fournisseur"
-  size="lg"
->
-  <form onSubmit={handleSubmit} className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
-    {/* Informations fournisseur */}
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Nom du fournisseur</label>
-        <input
-          type="text"
-          value={formData.nom}
-          onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-          placeholder="Ex: TechnoPlus SARL"
-          required
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Contact</label>
-        <input
-          type="text"
-          value={formData.contact}
-          onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-          placeholder="Ex: +261 34 12 345 67"
-          required
-        />
-      </div>
-    </div>
-
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">Adresse</label>
-      <textarea
-        value={formData.adresse}
-        onChange={(e) => setFormData({ ...formData, adresse: e.target.value })}
-        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-        placeholder="Adresse complète du fournisseur"
-        rows="3"
-        required
-      />
-    </div>
-
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">Date de livraison</label>
-      <input
-        type="date"
-        value={formData.date_livraison}
-        onChange={(e) => setFormData({ ...formData, date_livraison: e.target.value })}
-        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-        required
-      />
-    </div>
-
-    {/* Types de matériel - Section scrollable */}
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-3">
-        Types de matériel fournis
-        <span className="text-xs text-gray-500 ml-2">(Sélectionnez un ou plusieurs)</span>
-      </label>
-      <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-        <div className="max-h-48 overflow-y-auto space-y-2 pr-2">
-          {typesMateriel.map((type) => (
-            <label key={type.id} className="flex items-center p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          resetForm();
+        }}
+        title={isEditing ? "Modifier le Fournisseur" : "Nouveau Fournisseur"}
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Nom *</label>
               <input
-                type="checkbox"
-                checked={selectedTypes.includes(type.id)}
-                onChange={() => handleTypeToggle(type.id)}
-                className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                type="text"
+                value={formData.nom}
+                onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                placeholder="Ex: TechnoPlus SARL"
+                required
               />
-              <div className="ml-3">
-                <span className="text-sm font-medium text-gray-700">{type.designation}</span>
-                {type.description && (
-                  <p className="text-xs text-gray-500 mt-1">{type.description}</p>
-                )}
-              </div>
-            </label>
-          ))}
-        </div>
-        {selectedTypes.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <p className="text-sm text-green-600 font-medium">
-              {selectedTypes.length} type(s) sélectionné(s)
-            </p>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {selectedTypes.map(typeId => {
-                const type = typesMateriel.find(t => t.id === typeId);
-                return type ? (
-                  <span key={typeId} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                    {type.designation}
-                  </span>
-                ) : null;
-              })}
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Contact *</label>
+              <input
+                type="text"
+                value={formData.contact}
+                onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                placeholder="Ex: +261 34 12 345 67"
+                required
+              />
             </div>
           </div>
-        )}
-      </div>
-    </div>
 
-    {/* Boutons en bas fixe */}
-    <div className="sticky bottom-0 bg-white pt-4 border-t border-gray-200 -mx-6 -mb-6 px-6 pb-6">
-      <div className="flex justify-end gap-3">
-        <button 
-          type="button" 
-          onClick={() => setIsModalOpen(false)}
-          className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          Annuler
-        </button>
-        <button 
-          type="submit" 
-          className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={selectedTypes.length === 0}
-        >
-          Enregistrer ({selectedTypes.length})
-        </button>
-      </div>
-    </div>
-  </form>
-</Modal>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+              placeholder="Ex: contact@technoplus.mg"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">NIF</label>
+              <input
+                type="text"
+                value={formData.nif}
+                onChange={(e) => setFormData({ ...formData, nif: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                placeholder="Ex: 1234567890"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">STAT</label>
+              <input
+                type="text"
+                value={formData.stat}
+                onChange={(e) => setFormData({ ...formData, stat: e.target.value })}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                placeholder="Ex: 12345678901234"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Adresse *</label>
+            <textarea
+              value={formData.adresse}
+              onChange={(e) => setFormData({ ...formData, adresse: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none transition-all"
+              placeholder="Adresse complète du fournisseur"
+              rows="3"
+              required
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-6 border-t">
+            <button 
+              type="button" 
+              onClick={() => {
+                setIsModalOpen(false);
+                resetForm();
+              }}
+              className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all font-medium"
+            >
+              Annuler
+            </button>
+            <button 
+              type="submit" 
+              className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all shadow-md font-medium"
+            >
+              {isEditing ? 'Mettre à jour' : 'Enregistrer'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

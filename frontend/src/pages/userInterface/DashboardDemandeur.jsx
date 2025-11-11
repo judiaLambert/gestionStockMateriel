@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Clock, CheckCircle, XCircle, X, LogOut, User, 
-  Calendar, Package, FileText, Wrench, ChevronRight, BarChart3
+  Calendar, Package, FileText, Wrench, ChevronRight, BarChart3,
+  TrendingUp, Bell, Settings, Home, Sparkles, Activity
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
+import { showSuccess, showError, showConfirm } from '../../alerts.jsx';
 import { getDemandesByDemandeur, addDemande } from '../../api/demandematerielAPI';
 import { getMateriels } from '../../api/materielAPI';
 import { getDemandeurByUserId } from '../../api/demandeurAPI';
+import Loading from '../../components/Loading.jsx';
+import logoENI from '../../assets/IMG-20250925-WA0000.jpg';
 
 const DashboardDemandeur = () => {
   const navigate = useNavigate();
@@ -14,9 +19,9 @@ const DashboardDemandeur = () => {
   const [demandes, setDemandes] = useState([]);
   const [materiels, setMateriels] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentView, setCurrentView] = useState('home'); // home, demandes, stats
+  const [currentView, setCurrentView] = useState('home');
   const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('demande'); // demande ou signalement
+  const [modalType, setModalType] = useState('demande');
   
   const [stats, setStats] = useState({
     total: 0,
@@ -48,7 +53,8 @@ const DashboardDemandeur = () => {
       setDemandes(demandesData);
       calculateStats(demandesData);
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error(error);
+      showError('Impossible de charger les demandes');
     } finally {
       setLoading(false);
     }
@@ -59,7 +65,8 @@ const DashboardDemandeur = () => {
       const response = await getMateriels();
       setMateriels(response.data.data || response.data || []);
     } catch (error) {
-      console.error('Erreur:', error);
+      console.error(error);
+      showError('Impossible de charger les matériels');
     }
   };
 
@@ -73,8 +80,14 @@ const DashboardDemandeur = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
-    navigate('/login-demandeur');
+    showConfirm(
+      'Voulez-vous vraiment vous déconnecter ?',
+      () => {
+        localStorage.removeItem('user');
+        navigate('/login-demandeur');
+        showSuccess('Déconnexion réussie !');
+      }
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -92,60 +105,73 @@ const DashboardDemandeur = () => {
       setFormData({ raison_demande: '', details: [{ id_materiel: '', quantite_demander: 1 }] });
       setShowModal(false);
       fetchDemandes(userId);
-      alert('✅ Demande créée avec succès');
+      showSuccess(modalType === 'demande' ? 'Demande créée avec succès !' : 'Signalement envoyé avec succès !');
     } catch (error) {
-      alert('❌ Erreur lors de la création');
+      console.error(error);
+      showError('Erreur lors de l\'envoi de la demande');
     }
   };
 
   const getStatusConfig = (statut) => {
     const configs = {
-      approuvee: { icon: CheckCircle, text: 'Approuvée', color: 'text-green-600' },
-      refusee: { icon: XCircle, text: 'Refusée', color: 'text-gray-600' },
-      en_attente: { icon: Clock, text: 'En attente', color: 'text-blue-600' }
+      approuvee: { icon: CheckCircle, text: 'Approuvée', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+      refusee: { icon: XCircle, text: 'Refusée', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
+      en_attente: { icon: Clock, text: 'En attente', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' }
     };
     return configs[statut] || configs.en_attente;
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-3 border-gray-200 border-t-green-600 rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-sm text-gray-600">Chargement...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-green-50">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
+      <Toaster />
       
-      {/* HEADER UNIQUE */}
-      <header className="bg-white border-b shadow-sm">
-        <div className="max-w-5xl mx-auto px-6 py-4">
+      {/* HEADER MODERNE */}
+      <header className="bg-white/80 backdrop-blur-lg border-b border-gray-200/50 shadow-sm sticky top-0 z-40">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 bg-green-600 rounded-xl flex items-center justify-center shadow-sm">
-                <span className="text-white font-bold text-lg">ENI</span>
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-400 rounded-2xl blur-sm opacity-50"></div>
+                <div className="relative w-14 h-14 bg-white rounded-2xl shadow-lg flex items-center justify-center p-2">
+                  <img src={logoENI} alt="ENI Logo" className="w-full h-full object-contain" />
+                </div>
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-900">Comptabilité Matière</h1>
-                <p className="text-xs text-gray-500">École Nationale d'Informatique</p>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                  Comptabilité Matière
+                </h1>
+                <p className="text-xs text-gray-600">École Nationale d'Informatique</p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="px-3 py-2 bg-gray-50 rounded-lg">
-                <p className="text-sm font-semibold text-gray-900">{user?.nom}</p>
-                <p className="text-xs text-gray-500">Demandeur</p>
+              <button className="p-2 hover:bg-gray-100 rounded-xl transition-colors relative">
+                <Bell size={20} className="text-gray-600" />
+                {stats.enAttente > 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                )}
+              </button>
+              
+              <div className="h-8 w-px bg-gray-300"></div>
+              
+              <div className="flex items-center gap-3 px-3 py-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
+                <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-sm shadow-md">
+                  {user?.nom?.charAt(0)}
+                </div>
+                <div className="hidden sm:block">
+                  <p className="text-sm font-bold text-gray-900">{user?.nom}</p>
+                  <p className="text-xs text-gray-600">Demandeur</p>
+                </div>
               </div>
+              
               <button
                 onClick={handleLogout}
-                className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg"
+                className="p-2 hover:bg-red-50 rounded-xl transition-colors group"
                 title="Déconnexion"
               >
-                <LogOut size={20} />
+                <LogOut size={20} className="text-gray-600 group-hover:text-red-600 transition-colors" />
               </button>
             </div>
           </div>
@@ -153,98 +179,153 @@ const DashboardDemandeur = () => {
       </header>
 
       {/* CONTENU PRINCIPAL */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
 
         {/* VUE ACCUEIL */}
         {currentView === 'home' && (
           <div className="space-y-6">
             
-            {/* Message de bienvenue */}
-            <div className="bg-white rounded-2xl p-8 text-center border border-gray-200 shadow-sm">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <User size={32} className="text-green-600" />
+            {/* Hero Section */}
+            <div className="relative overflow-hidden bg-gradient-to-br from-green-600 via-emerald-600 to-teal-600 rounded-3xl shadow-2xl">
+              <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS1vcGFjaXR5PSIwLjEiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] opacity-20"></div>
+              
+              <div className="relative px-8 py-12">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Sparkles className="w-8 h-8 text-yellow-300 animate-pulse" />
+                      <h2 className="text-4xl font-bold text-white">
+                        Bonjour {user?.nom} ! 👋
+                      </h2>
+                    </div>
+                    <p className="text-xl text-green-50 mb-6">
+                      Bienvenue sur votre espace personnel
+                    </p>
+                    
+                    <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-2">
+                        <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                          <FileText className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-3xl font-bold text-white">{stats.total}</p>
+                          <p className="text-sm text-green-100">Demandes</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                          <Activity className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-3xl font-bold text-white">{stats.enAttente}</p>
+                          <p className="text-sm text-green-100">En cours</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="hidden lg:block">
+                    <div className="w-48 h-48 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center">
+                      <User className="w-24 h-24 text-white/60" />
+                    </div>
+                  </div>
+                </div>
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Bonjour {user?.nom} ! 👋
-              </h2>
-              <p className="text-gray-600">
-                Que souhaitez-vous faire aujourd'hui ?
-              </p>
             </div>
 
-            {/* Actions principales */}
-            <div className="grid md:grid-cols-2 gap-4">
+            {/* Actions Principales */}
+            <div className="grid sm:grid-cols-2 gap-6">
               
-              {/* Faire une demande */}
               <button
                 onClick={() => {
                   setModalType('demande');
                   setShowModal(true);
                 }}
-                className="bg-white rounded-xl p-6 border-2 border-gray-200 hover:border-green-500 hover:shadow-lg transition-all text-left group"
+                className="group relative overflow-hidden bg-white rounded-3xl p-8 border-2 border-gray-100 hover:border-green-400 hover:shadow-2xl transition-all duration-300"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-600 transition-colors">
-                    <Package size={24} className="text-green-600 group-hover:text-white transition-colors" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-400/20 to-emerald-400/20 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500"></div>
+                
+                <div className="relative">
+                  <div className="flex items-start justify-between mb-6">
+                    <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                      <Package size={32} className="text-white" />
+                    </div>
+                    <ChevronRight size={28} className="text-gray-300 group-hover:text-green-500 group-hover:translate-x-1 transition-all" />
                   </div>
-                  <ChevronRight size={24} className="text-gray-400 group-hover:text-green-600 transition-colors" />
+                  
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Demande de Matériel</h3>
+                  <p className="text-gray-600">Demandez du matériel informatique en quelques clics</p>
+                  
+                  <div className="mt-6 flex items-center gap-2">
+                    <span className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-semibold">Rapide</span>
+                    <span className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-semibold">Simple</span>
+                  </div>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Demande de Matériel</h3>
-                <p className="text-sm text-gray-600">Faire une nouvelle demande de matériel informatique</p>
               </button>
 
-              {/* Signaler une panne */}
               <button
                 onClick={() => {
                   setModalType('signalement');
                   setShowModal(true);
                 }}
-                className="bg-white rounded-xl p-6 border-2 border-gray-200 hover:border-blue-500 hover:shadow-lg transition-all text-left group"
+                className="group relative overflow-hidden bg-white rounded-3xl p-8 border-2 border-gray-100 hover:border-blue-400 hover:shadow-2xl transition-all duration-300"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-600 transition-colors">
-                    <Wrench size={24} className="text-blue-600 group-hover:text-white transition-colors" />
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400/20 to-indigo-400/20 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500"></div>
+                
+                <div className="relative">
+                  <div className="flex items-start justify-between mb-6">
+                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                      <Wrench size={32} className="text-white" />
+                    </div>
+                    <ChevronRight size={28} className="text-gray-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
                   </div>
-                  <ChevronRight size={24} className="text-gray-400 group-hover:text-blue-600 transition-colors" />
+                  
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">Signaler une Panne</h3>
+                  <p className="text-gray-600">Déclarez un problème ou une panne de matériel</p>
+                  
+                  <div className="mt-6 flex items-center gap-2">
+                    <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-semibold">24/7</span>
+                    <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-semibold">Prioritaire</span>
+                  </div>
                 </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Signaler une Panne</h3>
-                <p className="text-sm text-gray-600">Signaler un problème ou une panne de matériel</p>
               </button>
             </div>
 
-            {/* Accès rapide */}
-            <div className="grid md:grid-cols-2 gap-4">
-              
+            {/* Navigation Rapide */}
+            <div className="grid sm:grid-cols-2 gap-4">
               <button
                 onClick={() => setCurrentView('demandes')}
-                className="bg-white rounded-xl p-5 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all text-left"
+                className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all text-left group"
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <FileText size={20} className="text-gray-600" />
-                      <h4 className="font-semibold text-gray-900">Mes Demandes</h4>
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-gradient-to-br from-purple-100 to-purple-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <FileText size={28} className="text-purple-600" />
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-900 mb-1">Mes Demandes</h4>
+                      <p className="text-3xl font-bold text-purple-600">{stats.total}</p>
+                    </div>
                   </div>
-                  <ChevronRight size={20} className="text-gray-400" />
+                  <ChevronRight size={24} className="text-gray-400 group-hover:text-purple-600 transition-colors" />
                 </div>
               </button>
 
               <button
                 onClick={() => setCurrentView('stats')}
-                className="bg-white rounded-xl p-5 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all text-left"
+                className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all text-left group"
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <BarChart3 size={20} className="text-gray-600" />
-                      <h4 className="font-semibold text-gray-900">Statistiques</h4>
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-gradient-to-br from-orange-100 to-orange-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <BarChart3 size={28} className="text-orange-600" />
                     </div>
-                    <p className="text-2xl font-bold text-green-600">{stats.enAttente}</p>
-                    <p className="text-xs text-gray-500">en attente</p>
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-900 mb-1">Statistiques</h4>
+                      <p className="text-2xl font-bold text-orange-600">{stats.approuvees} approuvées</p>
+                    </div>
                   </div>
-                  <ChevronRight size={20} className="text-gray-400" />
+                  <ChevronRight size={24} className="text-gray-400 group-hover:text-orange-600 transition-colors" />
                 </div>
               </button>
             </div>
@@ -253,54 +334,77 @@ const DashboardDemandeur = () => {
 
         {/* VUE DEMANDES */}
         {currentView === 'demandes' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
               <button
                 onClick={() => setCurrentView('home')}
-                className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-white rounded-xl transition-all"
               >
-                ← Retour
+                <ChevronRight size={20} className="rotate-180" />
+                <span className="font-medium">Retour</span>
               </button>
-              <h2 className="text-xl font-bold text-gray-900">Mes Demandes</h2>
-              <div className="w-20"></div>
+              <h2 className="text-2xl font-bold text-gray-900">Mes Demandes</h2>
+              <div className="w-24"></div>
             </div>
 
             {demandes.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600">Aucune demande pour le moment</p>
+              <div className="bg-white rounded-3xl border-2 border-dashed border-gray-300 p-16 text-center">
+                <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Package className="w-12 h-12 text-gray-400" />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Aucune demande</h3>
+                <p className="text-gray-600 mb-6">Commencez par créer votre première demande</p>
+                <button
+                  onClick={() => {
+                    setModalType('demande');
+                    setShowModal(true);
+                  }}
+                  className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+                >
+                  Créer une demande
+                </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid gap-4">
                 {demandes.map((demande) => {
                   const status = getStatusConfig(demande.statut);
                   const StatusIcon = status.icon;
                   
                   return (
-                    <div key={demande.id_demande} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-gray-900 mb-1 truncate">{demande.raison_demande}</h3>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <Calendar size={12} />
-                            <span>{new Date(demande.date_demande).toLocaleDateString('fr-FR')}</span>
+                    <div key={demande.id_demande} className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-bold text-gray-900 mb-2">{demande.raison_demande}</h3>
+                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                            <div className="flex items-center gap-1">
+                              <Calendar size={14} />
+                              <span>{new Date(demande.date_demande).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: 'long',
+                                year: 'numeric'
+                              })}</span>
+                            </div>
                           </div>
                         </div>
-                        <span className={`flex items-center gap-1 text-xs font-medium ${status.color}`}>
-                          <StatusIcon size={14} />
+                        <span className={`flex items-center gap-2 px-4 py-2 ${status.bg} ${status.color} rounded-xl font-semibold border ${status.border}`}>
+                          <StatusIcon size={16} />
                           {status.text}
                         </span>
                       </div>
 
                       {demande.detailDemandes?.length > 0 && (
-                        <div className="bg-gray-50 rounded p-2 mt-2">
-                          <p className="text-xs text-gray-600 mb-1">Matériels:</p>
-                          {demande.detailDemandes.map((detail) => (
-                            <div key={detail.id_detail} className="flex justify-between text-xs">
-                              <span className="text-gray-700">{detail.materiel?.designation}</span>
-                              <span className="text-gray-500">x{detail.quantite_demander}</span>
-                            </div>
-                          ))}
+                        <div className="bg-gray-50 rounded-xl p-4">
+                          <p className="text-sm font-semibold text-gray-700 mb-3">Matériels demandés:</p>
+                          <div className="space-y-2">
+                            {demande.detailDemandes.map((detail) => (
+                              <div key={detail.id_detail} className="flex items-center justify-between p-2 bg-white rounded-lg">
+                                <span className="text-sm text-gray-900 font-medium">{detail.materiel?.designation}</span>
+                                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">
+                                  x{detail.quantite_demander}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -313,34 +417,58 @@ const DashboardDemandeur = () => {
 
         {/* VUE STATS */}
         {currentView === 'stats' && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="flex items-center justify-between">
               <button
                 onClick={() => setCurrentView('home')}
-                className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-white rounded-xl transition-all"
               >
-                ← Retour
+                <ChevronRight size={20} className="rotate-180" />
+                <span className="font-medium">Retour</span>
               </button>
-              <h2 className="text-xl font-bold text-gray-900">Statistiques</h2>
-              <div className="w-20"></div>
+              <h2 className="text-2xl font-bold text-gray-900">Statistiques</h2>
+              <div className="w-24"></div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl p-5 border border-gray-200">
-                <p className="text-sm text-gray-600 mb-1">Total</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+            <div className="grid sm:grid-cols-2 gap-6">
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-3xl p-8 text-white shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
+                  <FileText size={40} className="opacity-80" />
+                  <TrendingUp size={32} className="opacity-60" />
+                </div>
+                <p className="text-purple-100 text-sm font-medium mb-2">Total Demandes</p>
+                <p className="text-6xl font-bold mb-2">{stats.total}</p>
+                <p className="text-purple-200 text-sm">Depuis le début</p>
               </div>
-              <div className="bg-white rounded-xl p-5 border border-gray-200">
-                <p className="text-sm text-gray-600 mb-1">En attente</p>
-                <p className="text-3xl font-bold text-blue-600">{stats.enAttente}</p>
+
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-3xl p-8 text-white shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
+                  <Clock size={40} className="opacity-80" />
+                  <Activity size={32} className="opacity-60" />
+                </div>
+                <p className="text-blue-100 text-sm font-medium mb-2">En Attente</p>
+                <p className="text-6xl font-bold mb-2">{stats.enAttente}</p>
+                <p className="text-blue-200 text-sm">En cours de traitement</p>
               </div>
-              <div className="bg-white rounded-xl p-5 border border-gray-200">
-                <p className="text-sm text-gray-600 mb-1">Approuvées</p>
-                <p className="text-3xl font-bold text-green-600">{stats.approuvees}</p>
+
+              <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-3xl p-8 text-white shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
+                  <CheckCircle size={40} className="opacity-80" />
+                  <Sparkles size={32} className="opacity-60" />
+                </div>
+                <p className="text-green-100 text-sm font-medium mb-2">Approuvées</p>
+                <p className="text-6xl font-bold mb-2">{stats.approuvees}</p>
+                <p className="text-green-200 text-sm">Demandes validées</p>
               </div>
-              <div className="bg-white rounded-xl p-5 border border-gray-200">
-                <p className="text-sm text-gray-600 mb-1">Refusées</p>
-                <p className="text-3xl font-bold text-gray-600">{stats.refusees}</p>
+
+              <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-3xl p-8 text-white shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
+                  <XCircle size={40} className="opacity-80" />
+                  <Activity size={32} className="opacity-60" />
+                </div>
+                <p className="text-red-100 text-sm font-medium mb-2">Refusées</p>
+                <p className="text-6xl font-bold mb-2">{stats.refusees}</p>
+                <p className="text-red-200 text-sm">Demandes non validées</p>
               </div>
             </div>
           </div>
@@ -349,94 +477,120 @@ const DashboardDemandeur = () => {
 
       {/* MODAL */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-2xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl">
             
-            <div className="p-5 border-b">
+            <div className="px-8 py-6 border-b border-gray-100">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-900">
-                  {modalType === 'demande' ? 'Nouvelle Demande' : 'Signaler une Panne'}
+                <h3 className="text-2xl font-bold text-gray-900">
+                  {modalType === 'demande' ? '📦 Nouvelle Demande' : '🔧 Signaler une Panne'}
                 </h3>
-                <button onClick={() => setShowModal(false)} className="p-1 hover:bg-gray-100 rounded">
-                  <X size={18} className="text-gray-500" />
+                <button 
+                  onClick={() => setShowModal(false)} 
+                  className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+                >
+                  <X size={24} className="text-gray-500" />
                 </button>
               </div>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            <form onSubmit={handleSubmit} className="px-8 py-6 space-y-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">
-                  {modalType === 'demande' ? 'Raison' : 'Description du problème'}
+                <label className="block text-sm font-bold text-gray-900 mb-2">
+                  {modalType === 'demande' ? 'Raison de la demande' : 'Description du problème'}
                 </label>
                 <textarea
                   value={formData.raison_demande}
                   onChange={(e) => setFormData(prev => ({ ...prev, raison_demande: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none resize-none"
-                  rows="3"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none resize-none"
+                  rows="4"
+                  placeholder="Décrivez votre besoin..."
                   required
                 />
               </div>
               
               {modalType === 'demande' && (
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Matériels</label>
-                  {formData.details.map((detail, index) => (
-                    <div key={index} className="flex gap-2 mb-2">
-                      <select 
-                        value={detail.id_materiel}
-                        onChange={(e) => {
-                          const updated = [...formData.details];
-                          updated[index].id_materiel = e.target.value;
-                          setFormData(prev => ({ ...prev, details: updated }));
-                        }}
-                        className="flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
-                        required
-                      >
-                        <option value="">Sélectionner...</option>
-                        {materiels.map(m => (
-                          <option key={m.id} value={m.id}>{m.designation}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        value={detail.quantite_demander}
-                        onChange={(e) => {
-                          const updated = [...formData.details];
-                          updated[index].quantite_demander = parseInt(e.target.value) || 1;
-                          setFormData(prev => ({ ...prev, details: updated }));
-                        }}
-                        className="w-16 px-2 py-2 border rounded-lg text-sm text-center outline-none"
-                        min="1"
-                        required
-                      />
-                    </div>
-                  ))}
-                  <button 
-                    type="button"
-                    onClick={() => setFormData(prev => ({
-                      ...prev,
-                      details: [...prev.details, { id_materiel: '', quantite_demander: 1 }]
-                    }))}
-                    className="text-green-600 text-xs font-semibold"
-                  >
-                    + Ajouter
-                  </button>
+                  <label className="block text-sm font-bold text-gray-900 mb-3">Matériels souhaités</label>
+                  <div className="space-y-3">
+                    {formData.details.map((detail, index) => (
+                      <div key={index} className="flex gap-3">
+                        <select 
+                          value={detail.id_materiel}
+                          onChange={(e) => {
+                            const updated = [...formData.details];
+                            updated[index].id_materiel = e.target.value;
+                            setFormData(prev => ({ ...prev, details: updated }));
+                          }}
+                          className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                          required
+                        >
+                          <option value="">Choisir un matériel</option>
+                          {materiels.map((materiel) => (
+                            <option key={materiel.id} value={materiel.id}>
+                              {materiel.designation}
+                            </option>
+                          ))}
+                        </select>
+                        
+                        <input
+                          type="number"
+                          min="1"
+                          value={detail.quantite_demander}
+                          onChange={(e) => {
+                            const updated = [...formData.details];
+                            updated[index].quantite_demander = parseInt(e.target.value);
+                            setFormData(prev => ({ ...prev, details: updated }));
+                          }}
+                          className="w-24 px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-center font-semibold"
+                          placeholder="Qté"
+                          required
+                        />
+                        
+                        {formData.details.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = formData.details.filter((_, i) => i !== index);
+                              setFormData(prev => ({ ...prev, details: updated }));
+                            }}
+                            className="p-3 hover:bg-red-50 text-red-500 rounded-xl transition-colors"
+                          >
+                            <X size={20} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData(prev => ({
+                          ...prev,
+                          details: [...prev.details, { id_materiel: '', quantite_demander: 1 }]
+                        }));
+                      }}
+                      className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-600 rounded-xl hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition-all font-semibold text-sm"
+                    >
+                      + Ajouter un matériel
+                    </button>
+                  </div>
                 </div>
               )}
               
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-gray-50"
+                  className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-semibold hover:bg-gray-50 transition-all"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all"
                 >
-                  Envoyer
+                  {modalType === 'demande' ? 'Envoyer' : 'Signaler'}
                 </button>
               </div>
             </form>
