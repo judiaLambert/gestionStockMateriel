@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Plus, Clock, CheckCircle, XCircle, X, LogOut, User, 
   Calendar, Package, FileText, Wrench, ChevronRight, BarChart3,
-  TrendingUp, Bell, Settings, Home, Sparkles, Activity
+  TrendingUp, Bell, Sparkles, Activity
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
-import { showSuccess, showError, showConfirm } from '../../alerts.jsx';
+import { Toaster, toast } from 'react-hot-toast';
+import { showSuccess, showError, showConfirm, showInfo } from '../../alerts.jsx';
 import { getDemandesByDemandeur, addDemande } from '../../api/demandematerielAPI';
 import { getMateriels } from '../../api/materielAPI';
 import { getDemandeurByUserId } from '../../api/demandeurAPI';
@@ -32,6 +32,8 @@ const DashboardDemandeur = () => {
   
   const [formData, setFormData] = useState({
     raison_demande: '',
+    type_possession: 'temporaire',
+    date_retour: '',
     details: [{ id_materiel: '', quantite_demander: 1 }]
   });
   
@@ -42,8 +44,49 @@ const DashboardDemandeur = () => {
       setUser(userObj);
       fetchDemandes(userObj.id_utilisateur || userObj.id);
       fetchMateriels();
+      checkNotifications(userObj.id_utilisateur || userObj.id);
     }
   }, []);
+
+  const checkNotifications = async (userId) => {
+    try {
+      const demandeurResponse = await getDemandeurByUserId(userId);
+      const response = await getDemandesByDemandeur(demandeurResponse.data.id_demandeur);
+      const demandesData = response.data.data || response.data || [];
+      
+      // Vérifier les demandes récemment approuvées ou refusées (dans les 24h)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      demandesData.forEach(demande => {
+        const demandeDate = new Date(demande.date_demande);
+        if (demandeDate > yesterday) {
+          if (demande.statut === 'approuvee') {
+            toast.success(
+              <div>
+                <p className="font-bold">Demande approuvée ! ✅</p>
+                <p className="text-sm">{demande.raison_demande}</p>
+              </div>,
+              { duration: 5000, icon: '🎉' }
+            );
+          } else if (demande.statut === 'refusee') {
+            toast.error(
+              <div>
+                <p className="font-bold">Demande refusée ❌</p>
+                <p className="text-sm">{demande.raison_demande}</p>
+                {demande.motif_refus && (
+                  <p className="text-xs mt-1">Motif: {demande.motif_refus}</p>
+                )}
+              </div>,
+              { duration: 5000 }
+            );
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Erreur notifications:', error);
+    }
+  };
 
   const fetchDemandes = async (userId) => {
     try {
@@ -92,6 +135,13 @@ const DashboardDemandeur = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validation pour possession temporaire
+    if (formData.type_possession === 'temporaire' && !formData.date_retour) {
+      showError('Veuillez indiquer une date de retour pour une possession temporaire');
+      return;
+    }
+    
     try {
       const userId = user.id_utilisateur || user.id;
       const demandeurResponse = await getDemandeurByUserId(userId);
@@ -99,10 +149,17 @@ const DashboardDemandeur = () => {
       await addDemande({
         id_demandeur: demandeurResponse.data.id_demandeur,
         raison_demande: formData.raison_demande,
+        type_possession: formData.type_possession,
+        date_retour: formData.type_possession === 'definitive' ? null : formData.date_retour,
         details: formData.details.filter(d => d.id_materiel && d.quantite_demander > 0)
       });
       
-      setFormData({ raison_demande: '', details: [{ id_materiel: '', quantite_demander: 1 }] });
+      setFormData({ 
+        raison_demande: '', 
+        type_possession: 'temporaire',
+        date_retour: '',
+        details: [{ id_materiel: '', quantite_demander: 1 }] 
+      });
       setShowModal(false);
       fetchDemandes(userId);
       showSuccess(modalType === 'demande' ? 'Demande créée avec succès !' : 'Signalement envoyé avec succès !');
@@ -125,7 +182,7 @@ const DashboardDemandeur = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
-      <Toaster />
+      <Toaster position="top-right" />
       
       {/* HEADER MODERNE */}
       <header className="bg-white/80 backdrop-blur-lg border-b border-gray-200/50 shadow-sm sticky top-0 z-40">
@@ -375,7 +432,7 @@ const DashboardDemandeur = () => {
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
                           <h3 className="text-lg font-bold text-gray-900 mb-2">{demande.raison_demande}</h3>
-                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                          <div className="flex items-center gap-4 text-sm text-gray-600 mb-2">
                             <div className="flex items-center gap-1">
                               <Calendar size={14} />
                               <span>{new Date(demande.date_demande).toLocaleDateString('fr-FR', {
@@ -384,13 +441,33 @@ const DashboardDemandeur = () => {
                                 year: 'numeric'
                               })}</span>
                             </div>
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                              demande.type_possession === 'definitive' 
+                                ? 'bg-purple-100 text-purple-700' 
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {demande.type_possession === 'definitive' ? '🔒 Définitive' : '⏱️ Temporaire'}
+                            </span>
                           </div>
+                          {demande.date_retour && (
+                            <div className="flex items-center gap-1 text-xs text-orange-600">
+                              <Clock size={12} />
+                              <span>Retour prévu: {new Date(demande.date_retour).toLocaleDateString('fr-FR')}</span>
+                            </div>
+                          )}
                         </div>
                         <span className={`flex items-center gap-2 px-4 py-2 ${status.bg} ${status.color} rounded-xl font-semibold border ${status.border}`}>
                           <StatusIcon size={16} />
                           {status.text}
                         </span>
                       </div>
+
+                      {demande.motif_refus && (
+                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-xs font-semibold text-red-700 mb-1">Motif du refus:</p>
+                          <p className="text-sm text-red-600">{demande.motif_refus}</p>
+                        </div>
+                      )}
 
                       {demande.detailDemandes?.length > 0 && (
                         <div className="bg-gray-50 rounded-xl p-4">
@@ -475,12 +552,12 @@ const DashboardDemandeur = () => {
         )}
       </main>
 
-      {/* MODAL */}
+      {/* MODAL AVEC TYPE DE POSSESSION ET DATE RETOUR */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
             
-            <div className="px-8 py-6 border-b border-gray-100">
+            <div className="px-8 py-6 border-b border-gray-100 sticky top-0 bg-white z-10">
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-bold text-gray-900">
                   {modalType === 'demande' ? '📦 Nouvelle Demande' : '🔧 Signaler une Panne'}
@@ -510,75 +587,150 @@ const DashboardDemandeur = () => {
               </div>
               
               {modalType === 'demande' && (
-                <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-3">Matériels souhaités</label>
-                  <div className="space-y-3">
-                    {formData.details.map((detail, index) => (
-                      <div key={index} className="flex gap-3">
-                        <select 
-                          value={detail.id_materiel}
-                          onChange={(e) => {
-                            const updated = [...formData.details];
-                            updated[index].id_materiel = e.target.value;
-                            setFormData(prev => ({ ...prev, details: updated }));
-                          }}
-                          className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                          required
-                        >
-                          <option value="">Choisir un matériel</option>
-                          {materiels.map((materiel) => (
-                            <option key={materiel.id} value={materiel.id}>
-                              {materiel.designation}
-                            </option>
-                          ))}
-                        </select>
-                        
-                        <input
-                          type="number"
-                          min="1"
-                          value={detail.quantite_demander}
-                          onChange={(e) => {
-                            const updated = [...formData.details];
-                            updated[index].quantite_demander = parseInt(e.target.value);
-                            setFormData(prev => ({ ...prev, details: updated }));
-                          }}
-                          className="w-24 px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-center font-semibold"
-                          placeholder="Qté"
-                          required
-                        />
-                        
-                        {formData.details.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = formData.details.filter((_, i) => i !== index);
+                <>
+                  {/* TYPE DE POSSESSION */}
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-3">Type de possession *</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, type_possession: 'temporaire' }))}
+                        className={`p-4 border-2 rounded-xl transition-all ${
+                          formData.type_possession === 'temporaire'
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-blue-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <Clock className={formData.type_possession === 'temporaire' ? 'text-blue-600' : 'text-gray-400'} size={24} />
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                            formData.type_possession === 'temporaire' ? 'border-blue-500' : 'border-gray-300'
+                          }`}>
+                            {formData.type_possession === 'temporaire' && (
+                              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                            )}
+                          </div>
+                        </div>
+                        <p className="font-semibold text-gray-900 text-left">Temporaire</p>
+                        <p className="text-xs text-gray-600 text-left mt-1">À retourner après usage</p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, type_possession: 'definitive', date_retour: '' }))}
+                        className={`p-4 border-2 rounded-xl transition-all ${
+                          formData.type_possession === 'definitive'
+                            ? 'border-purple-500 bg-purple-50'
+                            : 'border-gray-200 hover:border-purple-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <Package className={formData.type_possession === 'definitive' ? 'text-purple-600' : 'text-gray-400'} size={24} />
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                            formData.type_possession === 'definitive' ? 'border-purple-500' : 'border-gray-300'
+                          }`}>
+                            {formData.type_possession === 'definitive' && (
+                              <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                            )}
+                          </div>
+                        </div>
+                        <p className="font-semibold text-gray-900 text-left">Définitive</p>
+                        <p className="text-xs text-gray-600 text-left mt-1">Pas de retour prévu</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* DATE DE RETOUR (seulement si temporaire) */}
+                  {formData.type_possession === 'temporaire' && (
+                    <div>
+                      <label className="block text-sm font-bold text-gray-900 mb-2">
+                        Date de retour prévue *
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.date_retour}
+                        onChange={(e) => setFormData(prev => ({ ...prev, date_retour: e.target.value }))}
+                        min={new Date().toISOString().split('T')[0]}
+                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        required
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        ℹ️ Indiquez la date à laquelle vous prévoyez de retourner le matériel
+                      </p>
+                    </div>
+                  )}
+
+                  {/* MATÉRIELS SOUHAITÉS */}
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-3">Matériels souhaités</label>
+                    <div className="space-y-3">
+                      {formData.details.map((detail, index) => (
+                        <div key={index} className="flex gap-3">
+                          <select 
+                            value={detail.id_materiel}
+                            onChange={(e) => {
+                              const updated = [...formData.details];
+                              updated[index].id_materiel = e.target.value;
                               setFormData(prev => ({ ...prev, details: updated }));
                             }}
-                            className="p-3 hover:bg-red-50 text-red-500 rounded-xl transition-colors"
+                            className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                            required
                           >
-                            <X size={20} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData(prev => ({
-                          ...prev,
-                          details: [...prev.details, { id_materiel: '', quantite_demander: 1 }]
-                        }));
-                      }}
-                      className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-600 rounded-xl hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition-all font-semibold text-sm"
-                    >
-                      + Ajouter un matériel
-                    </button>
+                            <option value="">Choisir un matériel</option>
+                            {materiels.map((materiel) => (
+                              <option key={materiel.id} value={materiel.id}>
+                                {materiel.designation}
+                              </option>
+                            ))}
+                          </select>
+                          
+                          <input
+                            type="number"
+                            min="1"
+                            value={detail.quantite_demander}
+                            onChange={(e) => {
+                              const updated = [...formData.details];
+                              updated[index].quantite_demander = parseInt(e.target.value);
+                              setFormData(prev => ({ ...prev, details: updated }));
+                            }}
+                            className="w-24 px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-center font-semibold"
+                            placeholder="Qté"
+                            required
+                          />
+                          
+                          {formData.details.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = formData.details.filter((_, i) => i !== index);
+                                setFormData(prev => ({ ...prev, details: updated }));
+                              }}
+                              className="p-3 hover:bg-red-50 text-red-500 rounded-xl transition-colors"
+                            >
+                              <X size={20} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData(prev => ({
+                            ...prev,
+                            details: [...prev.details, { id_materiel: '', quantite_demander: 1 }]
+                          }));
+                        }}
+                        className="w-full py-3 border-2 border-dashed border-gray-300 text-gray-600 rounded-xl hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition-all font-semibold text-sm"
+                      >
+                        + Ajouter un matériel
+                      </button>
+                    </div>
                   </div>
-                </div>
+                </>
               )}
               
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-4 border-t">
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
