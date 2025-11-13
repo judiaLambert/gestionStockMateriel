@@ -49,6 +49,13 @@ const DepannageList = () => {
       setDepannages(depannagesRes.data);
       setMateriels(materielsRes.data);
       setDemandeurs(demandeursRes.data);
+      
+      // DEBUG: Afficher les demandeurs pour voir leur structure
+      console.log('🔍 Structure des demandeurs:', demandeursRes.data);
+      if (demandeursRes.data.length > 0) {
+        console.log('📋 Premier demandeur:', demandeursRes.data[0]);
+        console.log('🔑 Clés disponibles:', Object.keys(demandeursRes.data[0]));
+      }
     } catch (err) {
       showError('Impossible de charger les données');
     }
@@ -60,6 +67,13 @@ const DepannageList = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // DEBUG: Vérifier les données avant envoi
+    console.log('📤 Données du formulaire:', formData);
+    console.log('👤 Demandeur sélectionné:', demandeurs.find(d => 
+      d.id_demandeur === formData.id_demandeur
+    ));
+    
     try {
       if (isEditing) {
         await updateDepannage(editingId, formData);
@@ -76,14 +90,21 @@ const DepannageList = () => {
       resetForm();
       fetchData();
     } catch (err) {
+      console.error('❌ Erreur complète:', err);
       showError(err.response?.data?.message || 'Erreur lors de l\'enregistrement');
     }
   };
 
   const handleEdit = (depannage) => {
+    // La clé primaire du demandeur est id_demandeur
+    const demandeurId = depannage.id_demandeur || depannage.demandeur?.id_demandeur;
+    const materielId = depannage.id_materiel || depannage.materiel?.id;
+    
+    console.log('✏️ Édition - IDs extraits:', { demandeurId, materielId });
+    
     setFormData({
-      id_materiel: depannage.materiel?.id || '',
-      id_demandeur: depannage.demandeur?.id || '',
+      id_materiel: materielId || '',
+      id_demandeur: demandeurId || '',
       date_signalement: depannage.date_signalement?.split('T')[0] || new Date().toISOString().split('T')[0],
       description_panne: depannage.description_panne || '',
     });
@@ -154,6 +175,12 @@ const DepannageList = () => {
       case 'Irréparable': return <XCircle size={16} />;
       default: return <AlertTriangle size={16} />;
     }
+  };
+
+  // Fonction helper pour obtenir le bon ID du demandeur
+  const getDemandeurId = (demandeur) => {
+    // La clé primaire est id_demandeur dans l'entité
+    return demandeur.id_demandeur;
   };
 
   return (
@@ -299,24 +326,38 @@ const DepannageList = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Demandeur *</label>
                 <select
                   value={formData.id_demandeur}
-                  onChange={(e) => setFormData({ ...formData, id_demandeur: e.target.value })}
+                  onChange={(e) => {
+                    console.log('👤 Demandeur sélectionné:', e.target.value);
+                    setFormData({ ...formData, id_demandeur: e.target.value });
+                  }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-orange-500"
                   required
                 >
                   <option value="">Choisir un demandeur</option>
-                  {demandeurs.map(demandeur => (
-                    <option key={demandeur.id} value={demandeur.id}>
-                      {demandeur.nom} {demandeur.prenom}
-                    </option>
-                  ))}
+                  {demandeurs.map(demandeur => {
+                    const demandeurId = getDemandeurId(demandeur);
+                    return (
+                      <option key={demandeurId} value={demandeurId}>
+                        {demandeur.nom} {demandeur.prenom} (ID: {demandeurId})
+                      </option>
+                    );
+                  })}
                 </select>
+                {demandeurs.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    🔍 Debug: {demandeurs.length} demandeurs chargés
+                  </p>
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Matériel *</label>
                 <select
                   value={formData.id_materiel}
-                  onChange={(e) => setFormData({ ...formData, id_materiel: e.target.value })}
+                  onChange={(e) => {
+                    console.log('🔧 Matériel sélectionné:', e.target.value);
+                    setFormData({ ...formData, id_materiel: e.target.value });
+                  }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-orange-500"
                   required
                 >
@@ -356,7 +397,10 @@ const DepannageList = () => {
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
               <button 
                 type="button" 
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => {
+                  setIsModalOpen(false);
+                  resetForm();
+                }}
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Annuler
