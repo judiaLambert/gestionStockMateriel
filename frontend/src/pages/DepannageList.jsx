@@ -10,7 +10,7 @@ import {
 } from '../api/depannageAPI';
 import { getMateriels } from '../api/materielAPI';
 import { getDemandeurs } from '../api/demandeurAPI';
-import { showSuccess, showError, showConfirm } from '../alerts';
+import { showSuccess, showError, showConfirm } from '../alerts.jsx';
 
 const formatDate = (dateString) => {
   if (!dateString) return '-';

@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
   Plus, Clock, CheckCircle, XCircle, X, LogOut, User, 
   Calendar, Package, FileText, Wrench, ChevronRight, BarChart3,
-  TrendingUp, Bell, Sparkles, Activity
+  TrendingUp, Bell, Sparkles, Activity, AlertTriangle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Toaster, toast } from 'react-hot-toast';
-import { showSuccess, showError, showConfirm, showInfo } from '../../alerts.jsx';
+import { showSuccess, showError, showConfirm } from '../../alerts.jsx';
 import { getDemandesByDemandeur, addDemande } from '../../api/demandematerielAPI';
 import { getMateriels } from '../../api/materielAPI';
 import { getDemandeurByUserId } from '../../api/demandeurAPI';
+import { signalerPanne, getDepannagesByDemandeur } from '../../api/depannageAPI';
 import Loading from '../../components/Loading.jsx';
 import logoENI from '../../assets/IMG-20250925-WA0000.jpg';
 
@@ -17,6 +18,7 @@ const DashboardDemandeur = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [demandes, setDemandes] = useState([]);
+  const [depannages, setDepannages] = useState([]);
   const [materiels, setMateriels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState('home');
@@ -29,12 +31,24 @@ const DashboardDemandeur = () => {
     approuvees: 0,
     refusees: 0
   });
+
+  const [statsDepannages, setStatsDepannages] = useState({
+    total: 0,
+    signale: 0,
+    enCours: 0,
+    resolu: 0
+  });
   
   const [formData, setFormData] = useState({
     raison_demande: '',
     type_possession: 'temporaire',
     date_retour: '',
     details: [{ id_materiel: '', quantite_demander: 1 }]
+  });
+
+  const [formSignalement, setFormSignalement] = useState({
+    id_materiel: '',
+    description_panne: ''
   });
   
   useEffect(() => {
@@ -43,18 +57,27 @@ const DashboardDemandeur = () => {
       const userObj = JSON.parse(userData);
       setUser(userObj);
       fetchDemandes(userObj.id_utilisateur || userObj.id);
+      fetchDepannages(userObj.id_utilisateur || userObj.id);
       fetchMateriels();
-      checkNotifications(userObj.id_utilisateur || userObj.id);
+      
+      // Vérifier les notifications toutes les 30 secondes
+      const interval = setInterval(() => {
+        checkNotifications(userObj.id_utilisateur || userObj.id);
+      }, 30000);
+      
+      return () => clearInterval(interval);
     }
   }, []);
 
   const checkNotifications = async (userId) => {
     try {
       const demandeurResponse = await getDemandeurByUserId(userId);
-      const response = await getDemandesByDemandeur(demandeurResponse.data.id_demandeur);
-      const demandesData = response.data.data || response.data || [];
+      const demandeurId = demandeurResponse.data.id_demandeur;
       
-      // Vérifier les demandes récemment approuvées ou refusées (dans les 24h)
+      // Notifications pour les demandes
+      const demandesResponse = await getDemandesByDemandeur(demandeurId);
+      const demandesData = demandesResponse.data.data || demandesResponse.data || [];
+      
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       
@@ -83,6 +106,44 @@ const DashboardDemandeur = () => {
           }
         }
       });
+
+      // Notifications pour les dépannages
+      const depannagesResponse = await getDepannagesByDemandeur(demandeurId);
+      const depannagesData = depannagesResponse.data || [];
+      
+      depannagesData.forEach(depannage => {
+        const depannageDate = new Date(depannage.date_signalement);
+        if (depannageDate > yesterday) {
+          if (depannage.statut_depannage === 'Résolu') {
+            toast.success(
+              <div>
+                <p className="font-bold">🎉 Matériel réparé !</p>
+                <p className="text-sm">{depannage.materiel?.designation}</p>
+                <p className="text-xs text-gray-600 mt-1">Votre matériel est prêt</p>
+              </div>,
+              { duration: 6000, icon: '🔧' }
+            );
+          } else if (depannage.statut_depannage === 'En cours') {
+            toast(
+              <div>
+                <p className="font-bold">⚙️ Réparation en cours</p>
+                <p className="text-sm">{depannage.materiel?.designation}</p>
+                <p className="text-xs text-gray-600 mt-1">Nous travaillons dessus</p>
+              </div>,
+              { duration: 4000, icon: '🔧' }
+            );
+          } else if (depannage.statut_depannage === 'Irréparable') {
+            toast.error(
+              <div>
+                <p className="font-bold">❌ Matériel irréparable</p>
+                <p className="text-sm">{depannage.materiel?.designation}</p>
+                <p className="text-xs text-gray-600 mt-1">Contactez le service</p>
+              </div>,
+              { duration: 6000 }
+            );
+          }
+        }
+      });
     } catch (error) {
       console.error('Erreur notifications:', error);
     }
@@ -100,6 +161,18 @@ const DashboardDemandeur = () => {
       showError('Impossible de charger les demandes');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchDepannages = async (userId) => {
+    try {
+      const demandeurResponse = await getDemandeurByUserId(userId);
+      const response = await getDepannagesByDemandeur(demandeurResponse.data.id_demandeur);
+      const depannagesData = response.data || [];
+      setDepannages(depannagesData);
+      calculateStatsDepannages(depannagesData);
+    } catch (error) {
+      console.error('Erreur chargement dépannages:', error);
     }
   };
 
@@ -122,6 +195,15 @@ const DashboardDemandeur = () => {
     });
   };
 
+  const calculateStatsDepannages = (data) => {
+    setStatsDepannages({
+      total: data.length,
+      signale: data.filter(d => d.statut_depannage === 'Signalé').length,
+      enCours: data.filter(d => d.statut_depannage === 'En cours').length,
+      resolu: data.filter(d => d.statut_depannage === 'Résolu').length
+    });
+  };
+
   const handleLogout = () => {
     showConfirm(
       'Voulez-vous vraiment vous déconnecter ?',
@@ -136,36 +218,65 @@ const DashboardDemandeur = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validation pour possession temporaire
-    if (formData.type_possession === 'temporaire' && !formData.date_retour) {
-      showError('Veuillez indiquer une date de retour pour une possession temporaire');
-      return;
-    }
-    
-    try {
-      const userId = user.id_utilisateur || user.id;
-      const demandeurResponse = await getDemandeurByUserId(userId);
+    if (modalType === 'signalement') {
+      // Gestion du signalement de panne
+      try {
+        const userId = user.id_utilisateur || user.id;
+        const demandeurResponse = await getDemandeurByUserId(userId);
+        
+        await signalerPanne({
+          id_materiel: formSignalement.id_materiel,
+          id_demandeur: demandeurResponse.data.id_demandeur,
+          description_panne: formSignalement.description_panne
+        });
+        
+        setFormSignalement({ id_materiel: '', description_panne: '' });
+        setShowModal(false);
+        fetchDepannages(userId);
+        
+        toast.success(
+          <div>
+            <p className="font-bold">🔧 Panne signalée !</p>
+            <p className="text-sm">Notre équipe va examiner votre demande</p>
+          </div>,
+          { duration: 4000 }
+        );
+      } catch (error) {
+        console.error(error);
+        showError('Erreur lors du signalement');
+      }
+    } else {
+      // Gestion de la demande de matériel
+      if (formData.type_possession === 'temporaire' && !formData.date_retour) {
+        showError('Veuillez indiquer une date de retour pour une possession temporaire');
+        return;
+      }
       
-      await addDemande({
-        id_demandeur: demandeurResponse.data.id_demandeur,
-        raison_demande: formData.raison_demande,
-        type_possession: formData.type_possession,
-        date_retour: formData.type_possession === 'definitive' ? null : formData.date_retour,
-        details: formData.details.filter(d => d.id_materiel && d.quantite_demander > 0)
-      });
-      
-      setFormData({ 
-        raison_demande: '', 
-        type_possession: 'temporaire',
-        date_retour: '',
-        details: [{ id_materiel: '', quantite_demander: 1 }] 
-      });
-      setShowModal(false);
-      fetchDemandes(userId);
-      showSuccess(modalType === 'demande' ? 'Demande créée avec succès !' : 'Signalement envoyé avec succès !');
-    } catch (error) {
-      console.error(error);
-      showError('Erreur lors de l\'envoi de la demande');
+      try {
+        const userId = user.id_utilisateur || user.id;
+        const demandeurResponse = await getDemandeurByUserId(userId);
+        
+        await addDemande({
+          id_demandeur: demandeurResponse.data.id_demandeur,
+          raison_demande: formData.raison_demande,
+          type_possession: formData.type_possession,
+          date_retour: formData.type_possession === 'definitive' ? null : formData.date_retour,
+          details: formData.details.filter(d => d.id_materiel && d.quantite_demander > 0)
+        });
+        
+        setFormData({ 
+          raison_demande: '', 
+          type_possession: 'temporaire',
+          date_retour: '',
+          details: [{ id_materiel: '', quantite_demander: 1 }] 
+        });
+        setShowModal(false);
+        fetchDemandes(userId);
+        showSuccess('Demande créée avec succès !');
+      } catch (error) {
+        console.error(error);
+        showError('Erreur lors de l\'envoi de la demande');
+      }
     }
   };
 
@@ -178,13 +289,23 @@ const DashboardDemandeur = () => {
     return configs[statut] || configs.en_attente;
   };
 
+  const getDepannageStatusConfig = (statut) => {
+    const configs = {
+      'Signalé': { icon: AlertTriangle, text: 'Signalé', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
+      'En cours': { icon: Wrench, text: 'En cours', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
+      'Résolu': { icon: CheckCircle, text: 'Résolu', color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' },
+      'Irréparable': { icon: XCircle, text: 'Irréparable', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' }
+    };
+    return configs[statut] || configs['Signalé'];
+  };
+
   if (loading) return <Loading />;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50">
       <Toaster position="top-right" />
       
-      {/* HEADER MODERNE */}
+      {/* HEADER */}
       <header className="bg-white/80 backdrop-blur-lg border-b border-gray-200/50 shadow-sm sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between">
@@ -206,8 +327,10 @@ const DashboardDemandeur = () => {
             <div className="flex items-center gap-3">
               <button className="p-2 hover:bg-gray-100 rounded-xl transition-colors relative">
                 <Bell size={20} className="text-gray-600" />
-                {stats.enAttente > 0 && (
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+                {(stats.enAttente + statsDepannages.signale) > 0 && (
+                  <span className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center font-bold">
+                    {stats.enAttente + statsDepannages.signale}
+                  </span>
                 )}
               </button>
               
@@ -271,11 +394,11 @@ const DashboardDemandeur = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                          <Activity className="w-6 h-6 text-white" />
+                          <Wrench className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                          <p className="text-3xl font-bold text-white">{stats.enAttente}</p>
-                          <p className="text-sm text-green-100">En cours</p>
+                          <p className="text-3xl font-bold text-white">{statsDepannages.total}</p>
+                          <p className="text-sm text-green-100">Signalements</p>
                         </div>
                       </div>
                     </div>
@@ -325,31 +448,31 @@ const DashboardDemandeur = () => {
                   setModalType('signalement');
                   setShowModal(true);
                 }}
-                className="group relative overflow-hidden bg-white rounded-3xl p-8 border-2 border-gray-100 hover:border-blue-400 hover:shadow-2xl transition-all duration-300"
+                className="group relative overflow-hidden bg-white rounded-3xl p-8 border-2 border-gray-100 hover:border-orange-400 hover:shadow-2xl transition-all duration-300"
               >
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-400/20 to-indigo-400/20 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500"></div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-orange-400/20 to-red-400/20 rounded-full -mr-16 -mt-16 group-hover:scale-150 transition-transform duration-500"></div>
                 
                 <div className="relative">
                   <div className="flex items-start justify-between mb-6">
-                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                    <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
                       <Wrench size={32} className="text-white" />
                     </div>
-                    <ChevronRight size={28} className="text-gray-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                    <ChevronRight size={28} className="text-gray-300 group-hover:text-orange-500 group-hover:translate-x-1 transition-all" />
                   </div>
                   
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">Signaler une Panne</h3>
                   <p className="text-gray-600">Déclarez un problème ou une panne de matériel</p>
                   
                   <div className="mt-6 flex items-center gap-2">
-                    <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-semibold">24/7</span>
-                    <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-semibold">Prioritaire</span>
+                    <span className="px-3 py-1 bg-orange-50 text-orange-700 rounded-full text-sm font-semibold">24/7</span>
+                    <span className="px-3 py-1 bg-orange-50 text-orange-700 rounded-full text-sm font-semibold">Prioritaire</span>
                   </div>
                 </div>
               </button>
             </div>
 
             {/* Navigation Rapide */}
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-3 gap-4">
               <button
                 onClick={() => setCurrentView('demandes')}
                 className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all text-left group"
@@ -369,23 +492,112 @@ const DashboardDemandeur = () => {
               </button>
 
               <button
-                onClick={() => setCurrentView('stats')}
+                onClick={() => setCurrentView('depannages')}
                 className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all text-left group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 bg-gradient-to-br from-orange-100 to-orange-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <BarChart3 size={28} className="text-orange-600" />
+                      <Wrench size={28} className="text-orange-600" />
                     </div>
                     <div>
-                      <h4 className="text-lg font-bold text-gray-900 mb-1">Statistiques</h4>
-                      <p className="text-2xl font-bold text-orange-600">{stats.approuvees} approuvées</p>
+                      <h4 className="text-lg font-bold text-gray-900 mb-1">Dépannages</h4>
+                      <p className="text-3xl font-bold text-orange-600">{statsDepannages.total}</p>
                     </div>
                   </div>
                   <ChevronRight size={24} className="text-gray-400 group-hover:text-orange-600 transition-colors" />
                 </div>
               </button>
+
+              <button
+                onClick={() => setCurrentView('stats')}
+                className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all text-left group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-gradient-to-br from-blue-100 to-blue-200 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <BarChart3 size={28} className="text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-900 mb-1">Stats</h4>
+                      <p className="text-2xl font-bold text-blue-600">{stats.approuvees} OK</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={24} className="text-gray-400 group-hover:text-blue-600 transition-colors" />
+                </div>
+              </button>
             </div>
+          </div>
+        )}
+
+        {/* VUE DEPANNAGES */}
+        {currentView === 'depannages' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setCurrentView('home')}
+                className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-white rounded-xl transition-all"
+              >
+                <ChevronRight size={20} className="rotate-180" />
+                <span className="font-medium">Retour</span>
+              </button>
+              <h2 className="text-2xl font-bold text-gray-900">Mes Signalements</h2>
+              <div className="w-24"></div>
+            </div>
+
+            {depannages.length === 0 ? (
+              <div className="bg-white rounded-3xl border-2 border-dashed border-gray-300 p-16 text-center">
+                <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Wrench className="w-12 h-12 text-gray-400" />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">Aucun signalement</h3>
+                <p className="text-gray-600 mb-6">Signalez une panne de matériel</p>
+                <button
+                  onClick={() => {
+                    setModalType('signalement');
+                    setShowModal(true);
+                  }}
+                  className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+                >
+                  Signaler une panne
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {depannages.map((depannage) => {
+                  const status = getDepannageStatusConfig(depannage.statut_depannage);
+                  const StatusIcon = status.icon;
+                  
+                  return (
+                    <div key={depannage.id} className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-xl transition-all duration-300">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <Wrench className="text-orange-600" size={20} />
+                            <h3 className="text-lg font-bold text-gray-900">{depannage.materiel?.designation}</h3>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-gray-600 mb-2">
+                            <div className="flex items-center gap-1">
+                              <Calendar size={14} />
+                              <span>{new Date(depannage.date_signalement).toLocaleDateString('fr-FR', {
+                                day: '2-digit',
+                                month: 'long',
+                                year: 'numeric'
+                              })}</span>
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-700 mt-2">{depannage.description_panne}</p>
+                        </div>
+                        <span className={`flex items-center gap-2 px-4 py-2 ${status.bg} ${status.color} rounded-xl font-semibold border ${status.border}`}>
+                          <StatusIcon size={16} />
+                          {status.text}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -547,12 +759,32 @@ const DashboardDemandeur = () => {
                 <p className="text-6xl font-bold mb-2">{stats.refusees}</p>
                 <p className="text-red-200 text-sm">Demandes non validées</p>
               </div>
+
+              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl p-8 text-white shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
+                  <Wrench size={40} className="opacity-80" />
+                  <AlertTriangle size={32} className="opacity-60" />
+                </div>
+                <p className="text-orange-100 text-sm font-medium mb-2">Pannes signalées</p>
+                <p className="text-6xl font-bold mb-2">{statsDepannages.signale}</p>
+                <p className="text-orange-200 text-sm">En attente de réparation</p>
+              </div>
+
+              <div className="bg-gradient-to-br from-teal-500 to-teal-600 rounded-3xl p-8 text-white shadow-2xl">
+                <div className="flex items-center justify-between mb-6">
+                  <CheckCircle size={40} className="opacity-80" />
+                  <Wrench size={32} className="opacity-60" />
+                </div>
+                <p className="text-teal-100 text-sm font-medium mb-2">Réparations</p>
+                <p className="text-6xl font-bold mb-2">{statsDepannages.resolu}</p>
+                <p className="text-teal-200 text-sm">Matériels réparés</p>
+              </div>
             </div>
           </div>
         )}
       </main>
 
-      {/* MODAL AVEC TYPE DE POSSESSION ET DATE RETOUR */}
+      {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -572,22 +804,77 @@ const DashboardDemandeur = () => {
             </div>
             
             <form onSubmit={handleSubmit} className="px-8 py-6 space-y-6">
-              <div>
-                <label className="block text-sm font-bold text-gray-900 mb-2">
-                  {modalType === 'demande' ? 'Raison de la demande' : 'Description du problème'}
-                </label>
-                <textarea
-                  value={formData.raison_demande}
-                  onChange={(e) => setFormData(prev => ({ ...prev, raison_demande: e.target.value }))}
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none resize-none"
-                  rows="4"
-                  placeholder="Décrivez votre besoin..."
-                  required
-                />
-              </div>
-              
-              {modalType === 'demande' && (
+              {modalType === 'signalement' ? (
                 <>
+                  {/* FORMULAIRE DE SIGNALEMENT */}
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-2">
+                      Matériel concerné *
+                    </label>
+                    <select
+                      value={formSignalement.id_materiel}
+                      onChange={(e) => setFormSignalement(prev => ({ ...prev, id_materiel: e.target.value }))}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none"
+                      required
+                    >
+                      <option value="">Choisir un matériel</option>
+                      {materiels.map((materiel) => (
+                        <option key={materiel.id} value={materiel.id}>
+                          {materiel.designation} - {materiel.marque}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-2">
+                      Description du problème *
+                    </label>
+                    <textarea
+                      value={formSignalement.description_panne}
+                      onChange={(e) => setFormSignalement(prev => ({ ...prev, description_panne: e.target.value }))}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none"
+                      rows="5"
+                      placeholder="Décrivez le problème rencontré en détail..."
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      💡 Plus votre description est précise, plus vite nous pourrons intervenir
+                    </p>
+                  </div>
+
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="text-orange-600 flex-shrink-0 mt-0.5" size={20} />
+                      <div>
+                        <p className="text-sm font-semibold text-orange-900 mb-1">
+                          Information importante
+                        </p>
+                        <p className="text-xs text-orange-800">
+                          Notre équipe technique sera notifiée immédiatement. Vous recevrez une notification 
+                          lorsque le statut de votre signalement évoluera.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* FORMULAIRE DE DEMANDE */}
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-2">
+                      Raison de la demande *
+                    </label>
+                    <textarea
+                      value={formData.raison_demande}
+                      onChange={(e) => setFormData(prev => ({ ...prev, raison_demande: e.target.value }))}
+                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none resize-none"
+                      rows="4"
+                      placeholder="Décrivez votre besoin..."
+                      required
+                    />
+                  </div>
+                  
                   {/* TYPE DE POSSESSION */}
                   <div>
                     <label className="block text-sm font-bold text-gray-900 mb-3">Type de possession *</label>
@@ -640,7 +927,7 @@ const DashboardDemandeur = () => {
                     </div>
                   </div>
 
-                  {/* DATE DE RETOUR (seulement si temporaire) */}
+                  {/* DATE DE RETOUR */}
                   {formData.type_possession === 'temporaire' && (
                     <div>
                       <label className="block text-sm font-bold text-gray-900 mb-2">
@@ -660,7 +947,7 @@ const DashboardDemandeur = () => {
                     </div>
                   )}
 
-                  {/* MATÉRIELS SOUHAITÉS */}
+                  {/* MATÉRIELS */}
                   <div>
                     <label className="block text-sm font-bold text-gray-900 mb-3">Matériels souhaités</label>
                     <div className="space-y-3">
@@ -740,7 +1027,11 @@ const DashboardDemandeur = () => {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all"
+                  className={`flex-1 px-6 py-3 text-white rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all ${
+                    modalType === 'signalement' 
+                      ? 'bg-gradient-to-r from-orange-500 to-red-600' 
+                      : 'bg-gradient-to-r from-green-500 to-emerald-600'
+                  }`}
                 >
                   {modalType === 'demande' ? 'Envoyer' : 'Signaler'}
                 </button>

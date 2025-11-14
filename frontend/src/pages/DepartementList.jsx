@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Search, Edit, Trash2, Building2, Layers } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { showSuccess, showError, showConfirm } from '../alerts.jsx';
 import Modal from '../components/Modal';
 import {
   getDepartements,
@@ -17,7 +18,6 @@ const DepartementList = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({
-    id_departement: '',
     num_salle: '',
     id_typedepartement: '',
     nom_service: '',
@@ -29,6 +29,7 @@ const DepartementList = () => {
       setDepartements(res.data);
     } catch (err) {
       console.error(err);
+      showError('Erreur lors du chargement des départements');
     }
   };
 
@@ -38,6 +39,7 @@ const DepartementList = () => {
       setTypesDepartement(res.data);
     } catch (err) {
       console.error(err);
+      showError('Erreur lors du chargement des types de département');
     }
   };
 
@@ -55,20 +57,22 @@ const DepartementList = () => {
           id_typedepartement: formData.id_typedepartement,
           nom_service: formData.nom_service,
         });
+        showSuccess('Département mis à jour avec succès !');
       } else {
         await addDepartement({
-          id_departement: formData.id_departement,
           num_salle: formData.num_salle,
           id_typedepartement: formData.id_typedepartement,
           nom_service: formData.nom_service,
         });
+        showSuccess('Département ajouté avec succès !');
       }
       setIsModalOpen(false);
       setIsEditing(false);
-      setFormData({ id_departement: '', num_salle: '', id_typedepartement: '', nom_service: '' });
+      setFormData({ num_salle: '', id_typedepartement: '', nom_service: '' });
       fetchDepartements();
     } catch (err) {
       console.error(err);
+      showError('Erreur lors de l\'enregistrement du département');
     }
   };
 
@@ -76,7 +80,7 @@ const DepartementList = () => {
     setFormData({
       id_departement: dept.id_departement,
       num_salle: dept.num_salle,
-      id_typedepartement: dept.typeDepartement?.id || '',
+      id_typedepartement: dept.typeDepartement?.id_typedepartement || '',
       nom_service: dept.nom_service,
     });
     setIsEditing(true);
@@ -84,12 +88,19 @@ const DepartementList = () => {
   };
 
   const handleDelete = async (dept) => {
-    if (confirm(`Supprimer le département "${dept.nom_service}" ?`)) {
+    const confirmed = await showConfirm(
+      `Êtes-vous sûr de vouloir supprimer le département "${dept.nom_service}" ?`,
+      'Cette action est irréversible'
+    );
+
+    if (confirmed) {
       try {
         await deleteDepartement(dept.id_departement);
+        showSuccess('Département supprimé avec succès !');
         fetchDepartements();
       } catch (err) {
         console.error(err);
+        showError('Erreur lors de la suppression du département');
       }
     }
   };
@@ -105,17 +116,15 @@ const DepartementList = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        {/* Header avec lien Type Département */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-3">
               Gestion des Départements
             </h1>
             
-            {/* Lien rapide Type Département */}
             <Link
               to="/type-departement"
-              className="flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors text-sm font-medium border border-purple-200 inline-flex"
+              className="inlineflex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors text-sm font-medium border border-purple-200 inline-flex"
             >
               <Layers size={16} />
               Gérer les Types de Département
@@ -125,7 +134,7 @@ const DepartementList = () => {
           <button
             onClick={() => {
               setIsEditing(false);
-              setFormData({ id_departement: '', num_salle: '', id_typedepartement: '', nom_service: '' });
+              setFormData({ num_salle: '', id_typedepartement: '', nom_service: '' });
               setIsModalOpen(true);
             }}
             className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 font-medium"
@@ -135,7 +144,6 @@ const DepartementList = () => {
           </button>
         </div>
 
-        {/* Carte de recherche */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
           <div className="flex-1 w-full max-w-xl">
             <div className="relative">
@@ -151,7 +159,6 @@ const DepartementList = () => {
           </div>
         </div>
 
-        {/* Tableau moderne */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full">
@@ -237,34 +244,17 @@ const DepartementList = () => {
         </div>
       </div>
 
-      {/* Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);
           setIsEditing(false);
-          setFormData({ id_departement: '', num_salle: '', id_typedepartement: '', nom_service: '' });
+          setFormData({ num_salle: '', id_typedepartement: '', nom_service: '' });
         }}
         title={isEditing ? 'Modifier le Département' : 'Nouveau Département'}
         size="md"
       >
         <form onSubmit={handleSubmit} className="space-y-5">
-          {!isEditing && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                ID Département
-              </label>
-              <input
-                type="text"
-                value={formData.id_departement}
-                onChange={(e) => setFormData({ ...formData, id_departement: e.target.value })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all bg-gray-50"
-                placeholder="Ex: DEPT-001"
-                required
-              />
-            </div>
-          )}
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Numéro de Salle
@@ -291,7 +281,7 @@ const DepartementList = () => {
             >
               <option value="">Sélectionnez un type</option>
               {typesDepartement.map((type) => (
-                <option key={type.id} value={type.id}>
+                <option key={type.id_typedepartement} value={type.id_typedepartement}>
                   {type.nom}
                 </option>
               ))}

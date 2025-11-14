@@ -8,7 +8,7 @@ import {
   deleteDetailDemande 
 } from '../api/detaildemandeAPI';
 import { getMateriels } from '../api/materielAPI';
-import { getDemandes } from '../api/demandeMaterielAPI';
+import { getDemandes } from '../api/demandematerielAPI';
 
 const DetailDemandeList = () => {
   const [details, setDetails] = useState([]);
